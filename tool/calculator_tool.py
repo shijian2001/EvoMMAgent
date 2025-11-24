@@ -1,65 +1,67 @@
-"""Example calculator tool for basic arithmetic operations."""
+"""Calculator tool for evaluating mathematical expressions."""
 
+import re
 from typing import Union, Dict
 from tool.base_tool import BasicTool, register_tool
 
 
 @register_tool(name="calculator")
 class CalculatorTool(BasicTool):
-    """A simple calculator tool that performs basic arithmetic operations."""
+    """An enhanced calculator tool that evaluates mathematical expressions."""
     
     name = "calculator"
-    description_en = "Performs basic arithmetic operations (add, subtract, multiply, divide)"
-    description_zh = "执行基本算术运算（加、减、乘、除）"
+    description_en = "Calculate mathematical expressions. Supports basic arithmetic (+, -, *, /), exponentiation (**), and parentheses. Example: '2 + 2', '4*9*84', '(5-4)/2', '2**3'"
+    description_zh = "计算数学表达式。支持基本算术运算（+、-、*、/）、幂运算（**）和括号。例如：'2 + 2'、'4*9*84'、'(5-4)/2'、'2**3'"
     parameters = {
         "type": "object",
         "properties": {
-            "operation": {
+            "expression": {
                 "type": "string",
-                "enum": ["add", "subtract", "multiply", "divide"],
-                "description": "The arithmetic operation to perform"
-            },
-            "a": {
-                "type": "number",
-                "description": "First operand"
-            },
-            "b": {
-                "type": "number",
-                "description": "Second operand"
+                "description": "The mathematical expression to calculate (e.g., '2 + 2', '4*9*84', '5-4/2')"
             }
         },
-        "required": ["operation", "a", "b"]
+        "required": ["expression"]
     }
     
     def call(self, params: Union[str, Dict]) -> str:
         """Execute the calculator operation.
         
         Args:
-            params: Parameters containing operation, a, and b
+            params: Parameters containing the expression
             
         Returns:
             Calculation result as string
         """
         # Validate and parse parameters
         params_dict = self.verify_json_format_args(params)
+        expression = params_dict["expression"]
         
-        operation = params_dict["operation"]
-        a = params_dict["a"]
-        b = params_dict["b"]
+        # Sanitize the expression - only allow safe mathematical operations
+        # Remove any potentially dangerous characters/functions
+        if not self._is_safe_expression(expression):
+            return "Error: Expression contains invalid or unsafe characters"
         
-        # Perform calculation
-        if operation == "add":
-            result = a + b
-        elif operation == "subtract":
-            result = a - b
-        elif operation == "multiply":
-            result = a * b
-        elif operation == "divide":
-            if b == 0:
-                return "Error: Division by zero"
-            result = a / b
-        else:
-            return f"Error: Unknown operation '{operation}'"
+        try:
+            # Use eval with restricted namespace for safety
+            result = eval(expression, {"__builtins__": {}}, {})
+            return f"Result: {result}"
+        except ZeroDivisionError:
+            return "Error: Division by zero"
+        except SyntaxError:
+            return "Error: Invalid syntax in expression"
+        except Exception as e:
+            return f"Error: {str(e)}"
+    
+    def _is_safe_expression(self, expr: str) -> bool:
+        """Check if expression contains only safe mathematical operations.
         
-        return f"Result: {result}"
+        Args:
+            expr: Expression to validate
+            
+        Returns:
+            True if expression is safe, False otherwise
+        """
+        # Allow only digits, operators, parentheses, decimal points, and whitespace
+        safe_pattern = re.compile(r'^[\d\s\+\-\*\/\(\)\.\*\*]+$')
+        return bool(safe_pattern.match(expr))
 

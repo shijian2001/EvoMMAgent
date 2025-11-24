@@ -21,6 +21,7 @@ classifiers = [
 dependencies = [
     "jinja2>=3.0.0",
     "jsonschema>=4.0.0",
+    "pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +35,7 @@ build-backend = "hatchling.build"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["agent*", "tool*"]
+include = ["agent*", "tool*", "utils*"]
 
 [tool.setuptools]
 zip-safe = false
