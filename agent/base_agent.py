@@ -7,6 +7,9 @@ from typing import Optional, List, Union, Dict
 from abc import ABC, abstractmethod
 from tool.base_tool import BasicTool, TOOL_REGISTRY
 
+# Import all tools to ensure they are registered
+import tool
+
 
 class BasicAgent(ABC):
     """Base class for agents that can use tools to accomplish tasks.
@@ -179,6 +182,7 @@ class BasicAgent(ABC):
                 "name_for_model": name_for_model,
                 "name_for_human": name_for_human,
                 "tool_description": tool_description,
+                "parameters": tool.parameters,
             }
             jinja_file = self.tool_description_jinja_file
             template = self.jinja_env.get_template(jinja_file)

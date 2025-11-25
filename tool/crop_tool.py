@@ -6,6 +6,7 @@ from typing import Union, Dict
 
 from tool.base_tool import BasicTool, register_tool
 from tool.utils.image_utils import image_processing, expand_bbox, visualize_bbox
+from tool.utils.temp_manager import get_temp_manager
 
 
 @register_tool(name="crop")
@@ -94,14 +95,24 @@ class CropTool(BasicTool):
         # Crop image
         cropped_image = image.crop(expanded_bbox)
         
-        # Return image object in result
+        # Save cropped image using temp manager
+        temp_manager = get_temp_manager()
+        output_path = temp_manager.get_output_path(
+            tool_name="crop",
+            input_path=image_path if isinstance(image_path, str) else None,
+            suffix="cropped"
+        )
+        cropped_image.save(output_path)
+        
+        # Return metadata with saved image path
         result = {
-            "image": cropped_image,
+            "success": True,
+            "output_image": output_path,
             "original_size": list(image.size),
             "cropped_size": list(cropped_image.size),
             "bbox": bbox,
             "expanded_bbox": list(expanded_bbox)
         }
         
-        return json.dumps(result, default=str)
+        return json.dumps(result, ensure_ascii=False, indent=2)
 

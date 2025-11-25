@@ -7,6 +7,7 @@ from PIL import Image
 
 from tool.base_tool import BasicTool, register_tool
 from tool.utils.image_utils import image_processing, expand_bbox, visualize_bbox
+from tool.utils.temp_manager import get_temp_manager
 
 
 @register_tool(name="zoom_in")
@@ -114,9 +115,19 @@ class ZoomInTool(BasicTool):
             Image.LANCZOS
         )
         
-        # Return image object in result
+        # Save zoomed image using temp manager
+        temp_manager = get_temp_manager()
+        output_path = temp_manager.get_output_path(
+            tool_name="zoom_in",
+            input_path=image_path if isinstance(image_path, str) else None,
+            suffix="zoomed"
+        )
+        zoomed_image.save(output_path)
+        
+        # Return metadata with saved image path
         result = {
-            "image": zoomed_image,
+            "success": True,
+            "output_image": output_path,
             "original_size": list(image.size),
             "cropped_size": [crop_w, crop_h],
             "zoomed_size": [new_width, new_height],
@@ -125,5 +136,5 @@ class ZoomInTool(BasicTool):
             "expanded_bbox": list(expanded_bbox)
         }
         
-        return json.dumps(result, default=str)
+        return json.dumps(result, ensure_ascii=False, indent=2)
 

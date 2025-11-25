@@ -82,3 +82,7 @@ source scripts/activate_env.sh /path/to/another/env
 ```bash
 # Run the basic example test
 python run_test.py
+
+# Run multimodal agent tests
+python run_mm_agent.py
+```

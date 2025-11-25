@@ -496,6 +496,62 @@ class CustomizeChatService:
                 tqdm.write(f"Reached max retries {self.max_retries}, giving up")
                 return ""
 
+    async def chat_gemini_vl(
+            self,
+            system_prompt: str,
+            user_prompt: List[Dict[str, Any]],
+            check_func: Callable[[str], Any],
+            cycler: ApiKeyCycler,
+            return_cot: bool = False
+    ) -> Union[str, Tuple[str, str]]:
+        """Call Gemini-VL API with multimodal support.
+        
+        TODO: Implement Gemini Vision-Language API support
+        
+        Args:
+            system_prompt: System message as plain string
+            user_prompt: User message content with multimodal elements (text/image/video)
+            check_func: Function to validate and process response
+            cycler: API key cycler for load balancing
+            return_cot: Whether to return chain-of-thought reasoning
+            
+        Returns:
+            Model response string, or tuple of (response, reasoning) if return_cot is True.
+            Empty string on failure.
+        """
+        # TODO: Implement Gemini VL multimodal processing
+        # This should handle image and video inputs similar to chat_qwen_vl_or_deepseek_vl
+        # but adapted for Gemini's API format
+        raise NotImplementedError("Gemini VL support is not yet implemented. TODO: Add implementation.")
+    
+    async def chat_gpt_vl(
+            self,
+            system_prompt: str,
+            user_prompt: List[Dict[str, Any]],
+            check_func: Callable[[str], Any],
+            cycler: ApiKeyCycler,
+            return_cot: bool = False
+    ) -> Union[str, Tuple[str, str]]:
+        """Call GPT-VL (GPT-4V/GPT-4o) API with multimodal support.
+        
+        TODO: Implement GPT Vision-Language API support
+        
+        Args:
+            system_prompt: System message as plain string
+            user_prompt: User message content with multimodal elements (text/image/video)
+            check_func: Function to validate and process response
+            cycler: API key cycler for load balancing
+            return_cot: Whether to return chain-of-thought reasoning
+            
+        Returns:
+            Model response string, or tuple of (response, reasoning) if return_cot is True.
+            Empty string on failure.
+        """
+        # TODO: Implement GPT-4V/GPT-4o multimodal processing
+        # This should handle image and video inputs
+        # GPT-4V API format uses image_url in message content
+        raise NotImplementedError("GPT VL support is not yet implemented. TODO: Add implementation.")
+
 
 if __name__ == "__main__":
     async def main():

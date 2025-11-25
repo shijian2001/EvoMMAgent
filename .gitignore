@@ -45,6 +45,7 @@ htmlcov/
 
 # Logs
 *.log
+logs/
 
 # API Keys
 keys.env
