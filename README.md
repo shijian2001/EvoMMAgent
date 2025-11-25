@@ -31,9 +31,27 @@ uv sync --active
 
 # With development tools
 uv sync --active --extra dev
+
+# With vision-language (VL) support
+uv sync --active --extra vl
 ```
 
-### 5. Add and remove dependencies
+### 5. Configuration for video processing (VL only)
+
+Set the video reader backend by exporting the environment variable:
+
+```bash
+# Use torchvision (default)
+export FORCE_QWENVL_VIDEO_READER=torchvision
+
+# Or use decord
+export FORCE_QWENVL_VIDEO_READER=decord
+
+# Or use torchcodec
+export FORCE_QWENVL_VIDEO_READER=torchcodec
+```
+
+### 6. Add and remove dependencies
 
 ```bash
 # Add a new package
@@ -43,13 +61,13 @@ uv add --active [package-name]
 uv remove --active [package-name]
 ```
 
-### 6. Deactivate environment
+### 7. Deactivate environment
 
 ```bash
 deactivate
 ```
 
-### 7. Switch to different environment
+### 8. Switch to different environment
 
 ```bash
 # Deactivate current environment
@@ -62,6 +80,5 @@ source scripts/activate_env.sh /path/to/another/env
 ## Quick Start
 
 ```bash
-# Run the example test
+# Run the basic example test
 python run_test.py
-```

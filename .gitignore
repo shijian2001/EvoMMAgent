@@ -22,13 +22,10 @@ wheels/
 
 # Virtual environments
 venv/
-env/
 ENV/
 .venv
 .venv/
-
-# UV
-uv.lock
+**/env/
 
 # IDE
 .vscode/
@@ -49,3 +46,11 @@ htmlcov/
 # Logs
 *.log
 
+# API Keys
+keys.env
+*.env
+
+# Test data (except test images/videos)
+test_data/env/
+test_data/**/*.pyc
+test_data/__pycache__/

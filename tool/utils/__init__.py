@@ -1,6 +1,6 @@
-"""Utility functions for EvoMMAgent."""
+"""Utility functions for tools."""
 
-from utils.image_utils import (
+from tool.utils.image_utils import (
     get_full_path_data,
     image_processing,
     expand_bbox,

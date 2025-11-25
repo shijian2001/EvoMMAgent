@@ -6,7 +6,7 @@ from typing import Union, Dict
 from PIL import Image
 
 from tool.base_tool import BasicTool, register_tool
-from utils.image_utils import image_processing, expand_bbox, visualize_bbox
+from tool.utils.image_utils import image_processing, expand_bbox, visualize_bbox
 
 
 @register_tool(name="zoom_in")
