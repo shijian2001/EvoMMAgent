@@ -135,6 +135,16 @@ print(f"my_tool: {r}")
 
 4. **实现 `_call_impl` 而非 `call`**：`call` 会自动处理模型加载
 
+### 命名规范
+
+| 类型 | 规范 | 示例 |
+|------|------|------|
+| 文件名 | `snake_case_tool.py` | `crop_tool.py`, `ocr_tool.py` |
+| 类名 | `PascalCase` + `Tool` 后缀 | `CropTool`, `OCRTool` |
+| 工具名 (name) | `snake_case` | `crop`, `ocr`, `solve_math` |
+| 变量/函数 | `snake_case` | `output_path`, `load_model` |
+| 常量 | `UPPER_SNAKE_CASE` | `OCR_MODEL_PATH` |
+
 ### 代码风格
 
 - 保持简洁，避免冗余代码，英文注释
