@@ -1,8 +1,8 @@
 """Tool for visualizing regions on images with bounding boxes."""
 
-import os
 from typing import Union, Dict
 from tool.base_tool import BasicTool, register_tool
+from tool.utils.temp_manager import get_temp_manager
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -27,13 +27,13 @@ class VisualizeRegionsOnImageTool(BasicTool):
             },
             "regions": {
                 "type": "array",
-                "description": "List of regions to label. Each region should have 'bbox' (list of 4 floats) and optional 'label' (string)",
+                "description": "List of regions to label, each with 'bbox' and optional 'label'",
                 "items": {
                     "type": "object",
                     "properties": {
                         "bbox": {
                             "type": "array",
-                            "description": "Normalized bounding box coordinates [x1, y1, x2, y2]",
+                            "description": "Normalized bounding box [x1, y1, x2, y2]",
                             "items": {"type": "number"},
                             "minItems": 4,
                             "maxItems": 4
@@ -48,21 +48,20 @@ class VisualizeRegionsOnImageTool(BasicTool):
             },
             "color": {
                 "type": "string",
-                "description": "Color of the bounding boxes (default: 'yellow')",
-                "default": "yellow"
+                "description": "Color of the bounding boxes (default: 'yellow')"
             },
             "width": {
                 "type": "integer",
-                "description": "Width of the bounding box lines (default: 4)",
-                "default": 4
+                "description": "Width of the bounding box lines (default: 4)"
             },
             "output_path": {
                 "type": "string",
-                "description": "Path to save the output image (optional, if not provided, will save as 'image_path_labeled.png')"
+                "description": "Path to save the output image (optional)"
             }
         },
         "required": ["image_path", "regions"]
     }
+    example = '{"image_path": "/path/to/image.jpg", "regions": [{"bbox": [0.1, 0.1, 0.5, 0.5], "label": "Object A"}, {"bbox": [0.6, 0.6, 0.9, 0.9], "label": "Object B"}]}'
     
     def call(self, params: Union[str, Dict]) -> str:
         """Execute the visualization operation.
@@ -77,7 +76,7 @@ class VisualizeRegionsOnImageTool(BasicTool):
             return "Error: PIL (Pillow) is not installed. Please install it with: pip install Pillow"
         
         # Validate and parse parameters
-        params_dict = self.verify_json_format_args(params)
+        params_dict = self.parse_params(params)
         
         image_path = params_dict["image_path"]
         regions = params_dict["regions"]
@@ -140,8 +139,7 @@ class VisualizeRegionsOnImageTool(BasicTool):
             
             # Save the output
             if not output_path:
-                base, ext = os.path.splitext(image_path)
-                output_path = f"{base}_labeled.png"
+                output_path = get_temp_manager().get_output_path("visualize_regions", image_path, "labeled", ".png")
             
             img_labeled.save(output_path)
             

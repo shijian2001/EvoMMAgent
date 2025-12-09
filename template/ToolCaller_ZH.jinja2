@@ -1,8 +1,21 @@
-## {{ name_for_human }}
+### {{ name_for_human }}
 
 **工具名称**: {{ name_for_model }}
 
 **功能描述**: {{ tool_description }}
 
-**参数定义**: {{ parameters | tojson }}
+**参数说明**:
+{% if parameters.properties %}
+{% for param_name, param_info in parameters.properties.items() %}
+- `{{ param_name }}` ({{ param_info.type }}{% if param_name in parameters.get('required', []) %}, 必填{% endif %}): {{ param_info.description | default('无描述') }}
+{% endfor %}
+{% else %}
+无需参数。
+{% endif %}
+
+**调用示例**:
+```
+Action: {{ name_for_model }}
+Action Input: {{ example if example else '{}' }}
+```
 

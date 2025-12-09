@@ -5,6 +5,9 @@ import sys
 import os
 import logging
 
+# 配置 logging 显示到终端
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+
 sys.path.append('.')
 
 from agent.mm_agent import MultimodalAgent

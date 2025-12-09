@@ -10,18 +10,19 @@ class CalculatorTool(BasicTool):
     """An enhanced calculator tool that evaluates mathematical expressions."""
     
     name = "calculator"
-    description_en = "Calculate mathematical expressions. Supports basic arithmetic (+, -, *, /), exponentiation (**), and parentheses. Example: '2 + 2', '4*9*84', '(5-4)/2', '2**3'"
-    description_zh = "计算数学表达式。支持基本算术运算（+、-、*、/）、幂运算（**）和括号。例如：'2 + 2'、'4*9*84'、'(5-4)/2'、'2**3'"
+    description_en = "Calculate mathematical expressions. Supports basic arithmetic (+, -, *, /), exponentiation (**), and parentheses."
+    description_zh = "计算数学表达式。支持基本算术运算（+、-、*、/）、幂运算（**）和括号。"
     parameters = {
         "type": "object",
         "properties": {
             "expression": {
                 "type": "string",
-                "description": "The mathematical expression to calculate (e.g., '2 + 2', '4*9*84', '5-4/2')"
+                "description": "The mathematical expression to calculate"
             }
         },
         "required": ["expression"]
     }
+    example = '{"expression": "123 * 456 + 789"}'
     
     def call(self, params: Union[str, Dict]) -> str:
         """Execute the calculator operation.
@@ -33,7 +34,7 @@ class CalculatorTool(BasicTool):
             Calculation result as string
         """
         # Validate and parse parameters
-        params_dict = self.verify_json_format_args(params)
+        params_dict = self.parse_params(params)
         expression = params_dict["expression"]
         
         # Sanitize the expression - only allow safe mathematical operations
@@ -44,7 +45,7 @@ class CalculatorTool(BasicTool):
         try:
             # Use eval with restricted namespace for safety
             result = eval(expression, {"__builtins__": {}}, {})
-            return f"Result: {result}"
+            return result
         except ZeroDivisionError:
             return "Error: Division by zero"
         except SyntaxError:

@@ -5,10 +5,12 @@ import jinja2
 
 from typing import Optional, List, Union, Dict
 from abc import ABC, abstractmethod
-from tool.base_tool import BasicTool, TOOL_REGISTRY
+from tool.base_tool import BasicTool, ModelBasedTool, TOOL_REGISTRY
+from tool.gpu_manager import acquire_gpu, release_gpu
 
-# Import all tools to ensure they are registered
 import tool
+
+logger = logging.getLogger(__name__)
 
 
 class BasicAgent(ABC):
@@ -51,8 +53,8 @@ class BasicAgent(ABC):
 
         self.tool_bank = {}
         if tool_bank:
-            for tool in tool_bank:
-                self._init_tool(tool)
+            for t in tool_bank:
+                self._init_tool(t)
         self.use_zh = use_zh
 
         self.jinja_env = jinja2.Environment(
@@ -65,20 +67,17 @@ class BasicAgent(ABC):
         self.special_args_token = special_args_token
         self.special_obs_token = special_obs_token
 
-    def _init_tool(
-            self,
-            tool: Union[str, dict],
-    ):
+    def _init_tool(self, tool: Union[str, dict, BasicTool]):
         """Initialize and register a tool to the agent's tool bank.
+        
+        Model-based tools are automatically loaded to a free GPU.
         
         Args:
             tool: Tool instance, name (str), or config (dict)
         """
         if isinstance(tool, BasicTool):
+            instance = tool
             tool_name = tool.name
-            if tool_name in self.tool_bank:
-                logging.info(f"Repeatedly adding tool {tool_name}, will use the newest tool in tool bank")
-            self.tool_bank[tool_name] = tool
         else:
             if isinstance(tool, dict):
                 tool_name = tool["name"]
@@ -91,9 +90,20 @@ class BasicAgent(ABC):
 
             if tool_name not in TOOL_REGISTRY:
                 raise ValueError(f"Tool {tool_name} is not registered!")
-            if tool_name in self.tool_bank:
-                logging.info(f'Repeatedly adding tool {tool_name}, will use the newest tool in tool bank!')
-            self.tool_bank[tool_name] = TOOL_REGISTRY[tool_name](tool_cfg)
+            
+            instance = TOOL_REGISTRY[tool_name](tool_cfg)
+        
+        if tool_name in self.tool_bank:
+            logger.info(f'Replacing tool {tool_name} in tool bank')
+        
+        self.tool_bank[tool_name] = instance
+        
+        # Auto load model-based tools
+        if isinstance(instance, ModelBasedTool):
+            logger.info(f'Loading {tool_name}...')
+            instance.ensure_loaded()
+            acquire_gpu(instance.device)
+            logger.info(f'{tool_name} loaded on {instance.device}')
 
     def _call_tool(
             self,
@@ -183,6 +193,7 @@ class BasicAgent(ABC):
                 "name_for_human": name_for_human,
                 "tool_description": tool_description,
                 "parameters": tool.parameters,
+                "example": tool.tool_example,
             }
             jinja_file = self.tool_description_jinja_file
             template = self.jinja_env.get_template(jinja_file)
@@ -192,6 +203,33 @@ class BasicAgent(ABC):
         tool_name = ",".join(tool_names)
         tool_description = "\n\n".join(tool_descriptions)
         return (tool_name, tool_description)
+
+    def cleanup(self) -> None:
+        """Cleanup all model-based tools and release GPU resources."""
+        for name, t in self.tool_bank.items():
+            if isinstance(t, ModelBasedTool) and t.is_loaded:
+                logger.info(f'Unloading {name} from {t.device}')
+                release_gpu(t.device)
+                t.unload_model()
+    
+    def __del__(self):
+        """Auto cleanup on deletion."""
+        try:
+            self.cleanup()
+        except Exception:
+            pass
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, *args):
+        self.cleanup()
+    
+    async def __aenter__(self):
+        return self
+    
+    async def __aexit__(self, *args):
+        self.cleanup()
 
     @abstractmethod
     async def act(

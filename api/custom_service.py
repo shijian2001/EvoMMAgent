@@ -477,6 +477,7 @@ class CustomizeChatService:
                 completion = await client.chat.completions.create(**request_params)
 
                 response = completion.choices[0].message.content
+                print("response: {}".format(response))
                 response = check_func(response)
                 if return_cot and hasattr(completion.choices[0].message, "reasoning_content"):
                     cot = completion.choices[0].message.reasoning_content

@@ -1,170 +1,107 @@
+"""Base classes for tools."""
+
 import json
-import logging
+import asyncio
 import jsonschema
-
 from abc import ABC, abstractmethod
-from typing import Union, List, Optional, Dict
+from typing import Union, Dict, Any, Optional
 
-TOOL_REGISTRY = {}
+TOOL_REGISTRY: Dict[str, type] = {}
 
 
-def register_tool(
-        name: str,
-        allow_overwrite: bool = False,
-):
-    """Decorator to register a tool class to the global registry.
-    
-    Args:
-        name: Unique name for the tool
-        allow_overwrite: Whether to allow overwriting existing tool
-        
-    Returns:
-        Decorator function
-    """
+def register_tool(name: str):
+    """Decorator to register a tool class."""
     def decorator(cls):
-        if name in TOOL_REGISTRY:
-            if allow_overwrite:
-                logging.info(f'Tool `{name}` already exists! Overwriting with class {cls}.')
-            else:
-                raise ValueError(f'Tool `{name}` already exists! Please ensure that the tool name is unique.')
-        if cls.name and (cls.name != name):
-            raise ValueError(f'{cls.__name__}.name="{cls.name}" conflicts with @register_tool(name="{name}").')
         cls.name = name
         TOOL_REGISTRY[name] = cls
-
         return cls
-
     return decorator
 
 
 class BasicTool(ABC):
-    """Base class for all tools that can be used by agents.
+    """Base class for tools."""
     
-    Attributes:
-        name: Tool identifier
-        description_en: English description of the tool
-        description_zh: Chinese description of the tool
-        parameters: Tool parameter schema
-    """
     name: str = ""
     description_en: str = ""
     description_zh: str = ""
-    parameters: Union[List[Dict], Dict] = []
+    parameters: Dict = {}
+    example: str = ""
 
-    def __init__(
-            self,
-            cfg: Optional[Dict] = None,
-            use_zh: bool = False,
-            max_retries: int = 3,
-            retry_delay: int = 1,
-    ):
-        """Initialize the tool with configuration.
-        
-        Args:
-            cfg: Tool configuration dict
-            use_zh: Whether to use Chinese language
-            max_retries: Maximum retry attempts
-            retry_delay: Delay between retries in seconds
-        """
-        self.cfg = cfg or {}
-        if "name" in self.cfg and len(self.cfg["name"]) > 0:
-            self.tool_name = self.cfg["name"]
-        else:
-            self.tool_name = self.name
-        if "name_for_model" in self.cfg and len(self.cfg["name_for_model"]) > 0:
-            self.name_for_model = self.cfg["name_for_model"]
-        else:
-            self.name_for_model = self.name
-        if "name_for_human" in self.cfg and len(self.cfg["name_for_human"]) > 0:
-            self.name_for_human = self.cfg["name_for_human"]
-        else:
-            self.name_for_human = self.name
-
-        if use_zh:
-            if "description_zh" in self.cfg and len(self.cfg["description_zh"]) > 0:
-                self.tool_description = self.cfg["description_zh"]
-            else:
-                self.tool_description = self.description_zh
-        else:
-            if "description_en" in self.cfg and len(self.cfg["description_en"]) > 0:
-                self.tool_description = self.cfg["description_en"]
-            else:
-                self.tool_description = self.description_en
-
-        if "parameters" in self.cfg and len(self.cfg["parameters"]) > 0:
-            self.parameters = self.cfg["parameters"]
-
-        self.use_zh = use_zh
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
+    def __init__(self, cfg: Optional[Dict] = None, use_zh: bool = False):
+        cfg = cfg or {}
+        self.tool_name = cfg.get("name") or self.name
+        self.name_for_model = cfg.get("name_for_model") or self.name
+        self.name_for_human = cfg.get("name_for_human") or self.name
+        self.tool_description = cfg.get(f"description_{'zh' if use_zh else 'en'}") or \
+                                (self.description_zh if use_zh else self.description_en)
+        self.tool_example = cfg.get("example") or self.example
+        if cfg.get("parameters"):
+            self.parameters = cfg["parameters"]
 
     @abstractmethod
-    def call(
-            self,
-            params: Union[str, Dict],
-    ):
-        """Execute the tool with given parameters. Must be implemented by subclasses.
-        
-        Args:
-            params: Tool parameters as JSON string or dict
-            
-        Returns:
-            Tool execution result
-        """
+    def call(self, params: Union[str, Dict]) -> Any:
+        """Execute the tool."""
         raise NotImplementedError
 
-    @staticmethod
-    def json_loads(text: str) -> Dict:
-        """Parse JSON text, handling code block formatting.
-        
-        Args:
-            text: JSON string (may contain markdown code blocks)
-            
-        Returns:
-            Parsed dictionary
-        """
-        text = text.strip('\n')
-        if text.startswith('```') and text.endswith('\n```'):
-            text = '\n'.join(text.split('\n')[1:-1])
-        try:
-            return json.loads(text)
-        except json.decoder.JSONDecodeError as json_err:
-            raise json_err
+    async def call_async(self, params: Union[str, Dict]) -> Any:
+        """Async version."""
+        return await asyncio.to_thread(self.call, params)
 
-    def verify_json_format_args(
-            self,
-            params: Union[str, Dict],
-            strict_json: bool = False
-    ):
-        """Verify and parse parameters according to tool's parameter schema.
-        
-        Args:
-            params: Parameters as JSON string or dict
-            strict_json: Whether to use strict JSON parsing
-            
-        Returns:
-            Validated parameter dictionary
-            
-        Raises:
-            ValueError: If parameters are invalid
-        """
+    def parse_params(self, params: Union[str, Dict]) -> Dict:
+        """Parse and validate parameters."""
         if isinstance(params, str):
+            params = params.strip()
+            if params.startswith('```'):
+                params = '\n'.join(params.split('\n')[1:-1])
+            params = json.loads(params)
+        
+        if self.parameters:
+            jsonschema.validate(instance=params, schema=self.parameters)
+        return params
+
+
+class ModelBasedTool(BasicTool):
+    """Base class for model-based tools with lazy GPU loading."""
+    
+    model: Any = None
+    device: str = "cpu"
+    is_loaded: bool = False
+
+    def __init__(self, cfg: Optional[Dict] = None, use_zh: bool = False):
+        super().__init__(cfg, use_zh)
+        self.model = None
+        self.device = "cpu"
+        self.is_loaded = False
+
+    @abstractmethod
+    def load_model(self, device: str) -> None:
+        """Load model to device."""
+        raise NotImplementedError
+
+    def unload_model(self) -> None:
+        """Unload model and free memory."""
+        if self.model is not None:
+            del self.model
+            self.model = None
+            self.is_loaded = False
+            self.device = "cpu"
             try:
-                if strict_json:
-                    params_json: Dict = json.loads(params)
-                else:
-                    params_json: Dict = self.json_loads(params)
-            except json.decoder.JSONDecodeError:
-                raise ValueError('Parameters must be formatted as a valid JSON!')
-        else:
-            params_json: Dict = params
+                import torch
+                torch.cuda.empty_cache()
+            except:
+                pass
 
-        if isinstance(self.parameters, List):
-            for param in self.parameters:
-                if "required" in param and param["required"]:
-                    if param["name"] not in params_json:
-                        raise ValueError(f"Parameter {param['name']} is required")
-        elif isinstance(self.parameters, Dict):
-            jsonschema.validate(instance=params_json, schema=self.parameters)
+    def ensure_loaded(self, device: Optional[str] = None) -> None:
+        """Ensure model is loaded."""
+        if not self.is_loaded:
+            from tool.gpu_manager import get_free_gpu
+            self.load_model(device or get_free_gpu())
 
-        return params_json
+    def call(self, params: Union[str, Dict]) -> Any:
+        self.ensure_loaded()
+        return self._call_impl(params)
+
+    @abstractmethod
+    def _call_impl(self, params: Union[str, Dict]) -> Any:
+        """Tool implementation."""
+        raise NotImplementedError

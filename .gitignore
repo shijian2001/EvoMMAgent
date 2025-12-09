@@ -53,3 +53,9 @@ keys.env
 
 # Test data
 test_data/
+
+# Tool outputs
+memory/
+
+# Model config (local paths)
+tool/model_config.py

@@ -1,8 +1,21 @@
-## {{ name_for_human }}
+### {{ name_for_human }}
 
 **Tool Name**: {{ name_for_model }}
 
 **Description**: {{ tool_description }}
 
-**Parameters**: {{ parameters | tojson }}
+**Parameters**:
+{% if parameters.properties %}
+{% for param_name, param_info in parameters.properties.items() %}
+- `{{ param_name }}` ({{ param_info.type }}{% if param_name in parameters.get('required', []) %}, required{% endif %}): {{ param_info.description | default('No description') }}
+{% endfor %}
+{% else %}
+No parameters required.
+{% endif %}
+
+**Example**:
+```
+Action: {{ name_for_model }}
+Action Input: {{ example if example else '{}' }}
+```
 

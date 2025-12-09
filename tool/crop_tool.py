@@ -1,32 +1,20 @@
 """Crop tool for image region extraction."""
 
-import ast
 import json
 from typing import Union, Dict
 
 from tool.base_tool import BasicTool, register_tool
-from tool.utils.image_utils import image_processing, expand_bbox, visualize_bbox
+from tool.utils.image_utils import image_processing
 from tool.utils.temp_manager import get_temp_manager
 
 
 @register_tool(name="crop")
 class CropTool(BasicTool):
-    """Crop an image with a bounding box.
-    
-    Labels the cropped region with a bounding box and crops the region 
-    with margins around the bbox for contextual understanding.
-    """
+    """Crop an image with a bounding box."""
     
     name = "crop"
-    description_en = (
-        "Crop an image with the bounding box. It labels the cropped region "
-        "with a bounding box and crops the region with some margins around "
-        "the bounding box to help with contextual understanding of the region."
-    )
-    description_zh = (
-        "使用边界框裁剪图像。它会标记裁剪区域并在边界框周围添加一些边距，"
-        "以帮助理解区域的上下文。"
-    )
+    description_en = "Crop an image region specified by a bounding box."
+    description_zh = "使用边界框裁剪图像区域。"
     
     parameters = {
         "type": "object",
@@ -40,79 +28,43 @@ class CropTool(BasicTool):
                 "items": {"type": "number"},
                 "minItems": 4,
                 "maxItems": 4,
-                "description": (
-                    "Bounding box as [left, top, right, bottom], where each value "
-                    "is a float between 0 and 1 representing the percentage of "
-                    "image width/height from the top left corner at [0, 0]"
-                )
+                "description": "Bounding box as [left, top, right, bottom], values between 0 and 1"
             }
         },
         "required": ["image", "bbox"]
     }
+    example = '{"image": "/path/to/image.jpg", "bbox": [0.1, 0.2, 0.5, 0.6]}'
     
     def call(self, params: Union[str, Dict]) -> str:
-        """Execute crop operation.
-        
-        Args:
-            params: Parameters containing image path and bbox
-            
-        Returns:
-            JSON string with cropped image data
-        """
-        # Validate and parse parameters
-        params_dict = self.verify_json_format_args(params)
+        params_dict = self.parse_params(params)
         
         image_path = params_dict["image"]
         bbox = params_dict["bbox"]
         
-        # Parse bbox if string
-        if isinstance(bbox, str):
-            try:
-                bbox = ast.literal_eval(bbox)
-            except:
-                return json.dumps({"error": "Invalid bbox format"})
-        
-        # Validate bbox values
+        # Validate bbox
         if not all(0 <= x <= 1.0 for x in bbox):
-            return json.dumps({"error": "Bounding box coordinates must be between 0 and 1"})
+            return json.dumps({"error": "bbox values must be between 0 and 1"})
+        if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
+            return json.dumps({"error": "invalid bbox: left >= right or top >= bottom"})
         
-        # Process image
+        # Load image
         try:
             image = image_processing(image_path)
         except Exception as e:
-            return json.dumps({"error": f"Error loading image: {str(e)}"})
+            return json.dumps({"error": f"failed to load image: {e}"})
         
-        # Visualize bbox on image
-        image = visualize_bbox(image, bbox)
-        
-        # Convert percentage bbox to pixel coordinates
+        # Crop
         W, H = image.size
-        pixel_bbox = [bbox[0] * W, bbox[1] * H, bbox[2] * W, bbox[3] * H]
+        crop_box = (int(bbox[0] * W), int(bbox[1] * H), int(bbox[2] * W), int(bbox[3] * H))
+        cropped = image.crop(crop_box)
         
-        # Expand bbox with margins (default 50% margin)
-        expanded_bbox = expand_bbox(pixel_bbox, image.size, margin=0.5)
+        # Save
+        output_path = get_temp_manager().get_output_path("crop", image_path, "cropped")
+        cropped.save(output_path)
         
-        # Crop image
-        cropped_image = image.crop(expanded_bbox)
-        
-        # Save cropped image using temp manager
-        temp_manager = get_temp_manager()
-        output_path = temp_manager.get_output_path(
-            tool_name="crop",
-            input_path=image_path if isinstance(image_path, str) else None,
-            suffix="cropped"
-        )
-        cropped_image.save(output_path)
-        
-        # Return metadata with saved image path
-        result = {
+        return json.dumps({
             "success": True,
             "output_image": output_path,
-            "original_size": list(image.size),
-            "cropped_size": list(cropped_image.size),
-            "bbox": bbox,
-            "expanded_bbox": list(expanded_bbox)
-        }
-        
-        return json.dumps(result, ensure_ascii=False, indent=2)
-
+            "original_size": [W, H],
+            "cropped_size": list(cropped.size),
+        })

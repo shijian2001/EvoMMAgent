@@ -23,15 +23,16 @@ class SolveMathEquationTool(BasicTool):
         "properties": {
             "query": {
                 "type": "string",
-                "description": "A mathematical question or equation to solve (e.g., 'x^2 + 2x + 1 = 0, what is x?', 'integrate x^2 dx')"
+                "description": "A mathematical question or equation to solve"
             }
         },
         "required": ["query"]
     }
+    example = '{"query": "solve x^2 + 2x - 3 = 0"}'
     
-    def __init__(self, cfg=None, use_zh=False, max_retries=3, retry_delay=1):
+    def __init__(self, cfg=None, use_zh=False):
         """Initialize the Wolfram Alpha tool."""
-        super().__init__(cfg, use_zh, max_retries, retry_delay)
+        super().__init__(cfg, use_zh)
         
         if not WOLFRAM_AVAILABLE:
             self.client = None
@@ -58,7 +59,7 @@ class SolveMathEquationTool(BasicTool):
             return "Error: WOLFRAM_ALPHA_API_KEY environment variable is not set. Please set it to use this tool."
         
         # Validate and parse parameters
-        params_dict = self.verify_json_format_args(params)
+        params_dict = self.parse_params(params)
         query = params_dict["query"]
         
         try:
