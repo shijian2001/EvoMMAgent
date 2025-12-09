@@ -76,7 +76,7 @@ class OCRTool(ModelBasedTool):
 
 ## 3. 文件输出（图像/视频工具）
 
-对于返回图像、视频等文件的工具，使用 `TempManager` 保存到 `memory/` 目录：
+参考 `crop_tool.py`, 对于返回图像、视频等文件的工具，使用 `TempManager` 保存到 `memory/` 目录：
 
 ```python
 from tool.utils.temp_manager import get_temp_manager
