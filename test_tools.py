@@ -5,7 +5,7 @@ from tool import TOOL_REGISTRY
 
 print(f"Registered: {list(TOOL_REGISTRY.keys())}\n")
 
-IMG = "test_data/000000000009.jpg"
+IMG = "test_image.jpg"
 
 
 async def test():

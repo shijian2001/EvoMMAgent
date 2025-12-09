@@ -62,7 +62,8 @@ class OCRTool(ModelBasedTool):
     def load_model(self, device: str) -> None:
         """加载模型到指定设备，首次调用时自动触发"""
         from transformers import AutoModel
-        self.model = AutoModel.from_pretrained("model_name").to(device)
+        from tool.model_config import OCR_MODEL_PATH  # 从 model_config.py 导入路径
+        self.model = AutoModel.from_pretrained(OCR_MODEL_PATH).to(device)
         self.device = device
         self.is_loaded = True
 
@@ -121,14 +122,18 @@ print(f"my_tool: {r}")
 
 ### 模型工具特别注意
 
-1. **load_model 必须设置三个属性**：
+1. **在 `model_config.py` 中配置模型路径**：
+   - 新增模型工具时，在 `tool/model_config.py` 中添加模型路径变量
+   - 在 `load_model` 中 `from tool.model_config import YOUR_MODEL_PATH` 引用
+
+2. **load_model 必须设置三个属性**：
    - `self.model` - 模型实例
    - `self.device` - 当前设备
    - `self.is_loaded = True` - 标记已加载
 
-2. **GPU 自动管理**：不需要手动选择 GPU，系统会自动选择空闲显卡
+3. **GPU 自动管理**：不需要手动选择 GPU，系统会自动选择空闲显卡
 
-3. **实现 `_call_impl` 而非 `call`**：`call` 会自动处理模型加载
+4. **实现 `_call_impl` 而非 `call`**：`call` 会自动处理模型加载
 
 ### 代码风格
 
