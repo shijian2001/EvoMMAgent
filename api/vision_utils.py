@@ -183,4 +183,3 @@ def build_multimodal_message(
         return build_image_message(user_prompt, image_patch_size)
     else:
         return user_prompt, {}
-

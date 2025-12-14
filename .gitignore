@@ -61,3 +61,6 @@ memory/
 tool/model_config.py
 
 envs/
+
+# Deprecated code
+api_deprecated/

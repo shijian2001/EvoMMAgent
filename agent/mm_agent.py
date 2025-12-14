@@ -9,8 +9,7 @@ import json
 from typing import List, Dict, Optional, Union, Any
 
 from agent.base_agent import BasicAgent
-from api.custom_service import CustomizeChatService, DIRECTLLM_API_KEY_USER
-from api.utils.key_operator import ApiKeyCycler
+from api import APIPool, load_api_keys
 
 
 class MultimodalAgent(BasicAgent):
@@ -28,15 +27,17 @@ class MultimodalAgent(BasicAgent):
             tool_bank: Optional[List[Union[str, Dict]]] = None,
             use_zh: bool = False,
             model_name: str = "qwen2.5-vl-72b-instruct",
-            chat_service: Optional[CustomizeChatService] = None,
-            api_key_cycler: Optional[ApiKeyCycler] = None,
+            api_keys: Optional[List[str]] = None,
             max_iterations: int = 10,
             system_template_dir: str = "./template",
             tool_description_template_en_file: str = "ToolCaller_EN.jinja2",
             tool_description_template_zh_file: str = "ToolCaller_ZH.jinja2",
             mm_agent_template_en_file: str = "MMAgent_EN.jinja2",
             mm_agent_template_zh_file: str = "MMAgent_ZH.jinja2",
-            **service_kwargs
+            max_concurrent_per_key: int = 10,
+            base_url: str = "http://redservingapi.devops.xiaohongshu.com/v1",
+            temperature: float = 1.0,
+            max_tokens: Optional[int] = None,
     ):
         """Initialize the multimodal agent.
         
@@ -47,15 +48,17 @@ class MultimodalAgent(BasicAgent):
             tool_bank: List of tools (str names or dict configs)
             use_zh: Whether to use Chinese language
             model_name: Name of the vision-language model to use
-            chat_service: Optional pre-initialized chat service
-            api_key_cycler: Optional API key cycler (auto-created from env if not provided)
+            api_keys: Optional list of API keys (auto-loaded from env if not provided)
             max_iterations: Maximum ReAct iterations
             system_template_dir: Directory for Jinja2 templates
             tool_description_template_en_file: English tool description template
             tool_description_template_zh_file: Chinese tool description template
             mm_agent_template_en_file: English multimodal agent system prompt template
             mm_agent_template_zh_file: Chinese multimodal agent system prompt template
-            **service_kwargs: Additional arguments for CustomizeChatService
+            max_concurrent_per_key: Maximum concurrent requests per API key
+            base_url: Base URL for API endpoint
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens in response
         """
         super().__init__(
             name=name,
@@ -71,41 +74,27 @@ class MultimodalAgent(BasicAgent):
         self.model_name = model_name.lower()
         self.max_iterations = max_iterations
         self.mm_agent_template_file = mm_agent_template_zh_file if use_zh else mm_agent_template_en_file
+        self.temperature = temperature
+        self.max_tokens = max_tokens
         
-        # Initialize or use provided chat service
-        if chat_service:
-            self.chat_service = chat_service
-        else:
-            self.chat_service = CustomizeChatService(
-                model_name=model_name,
-                **service_kwargs
-            )
+        # Auto-load API keys if not provided
+        if api_keys is None:
+            try:
+                api_keys = load_api_keys()
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to load API keys: {str(e)}. "
+                    "Please provide api_keys or ensure keys.env is configured correctly."
+                )
         
-        # Auto-create api_key_cycler if not provided
-        if api_key_cycler is None:
-            if DIRECTLLM_API_KEY_USER:
-                api_key_cycler = ApiKeyCycler(api_key_list=list(DIRECTLLM_API_KEY_USER.values()))
-            else:
-                raise ValueError("No API keys found. Please set DIRECTLLM_API_KEY_USER in environment or provide api_key_cycler.")
-        
-        self.api_key_cycler = api_key_cycler
-        
-        # Detect model type
-        self._detect_model_type()
+        # Create API pool (disable JSON parsing for Agent compatibility)
+        self.api_pool = APIPool(
+            model_name=model_name,
+            api_keys=api_keys,
+            max_concurrent_per_key=max_concurrent_per_key,
+            parse_json=False,  # Agent needs raw string to detect tool calls
+        )
     
-    def _detect_model_type(self):
-        """Detect the model type from model name."""
-        model_lower = self.model_name.lower()
-        
-        if ("qwen" in model_lower or "deepseek" in model_lower) and "vl" in model_lower:
-            self.model_type = "qwen_deepseek_vl"
-        elif "gemini" in model_lower:
-            self.model_type = "gemini_vl"
-        elif "gpt" in model_lower and ("vision" in model_lower or "4o" in model_lower):
-            self.model_type = "gpt_vl"
-        else:
-            logging.warning(f"Unknown model type for {self.model_name}, defaulting to qwen_deepseek_vl")
-            self.model_type = "qwen_deepseek_vl"
     
     def _build_system_prompt(self) -> str:
         """Build system prompt with tool descriptions using Jinja2 template.
@@ -144,7 +133,7 @@ class MultimodalAgent(BasicAgent):
             system_prompt: str,
             user_prompt: List[Dict[str, Any]],
     ) -> str:
-        """Call the appropriate LLM based on model type.
+        """Call the LLM using the API pool.
         
         Args:
             system_prompt: System prompt string
@@ -153,42 +142,17 @@ class MultimodalAgent(BasicAgent):
         Returns:
             LLM response string
         """
-        if not self.api_key_cycler:
-            raise ValueError("api_key_cycler is required")
+        # Use the unified qa method from API pool
+        result = await self.api_pool.execute(
+            "qa",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+        )
         
-        def check_func(response: str) -> str:
-            return response
-        
-        # Call appropriate API based on model type
-        if self.model_type == "qwen_deepseek_vl":
-            print(system_prompt)
-            response = await self.chat_service.chat_qwen_vl_or_deepseek_vl(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                check_func=check_func,
-                cycler=self.api_key_cycler,
-                auto_detect=True,
-            )
-        elif self.model_type == "gemini_vl":
-            # TODO: Implement Gemini VL support
-            response = await self.chat_service.chat_gemini_vl(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                check_func=check_func,
-                cycler=self.api_key_cycler,
-            )
-        elif self.model_type == "gpt_vl":
-            # TODO: Implement GPT VL support
-            response = await self.chat_service.chat_gpt_vl(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                check_func=check_func,
-                cycler=self.api_key_cycler,
-            )
-        else:
-            raise ValueError(f"Unsupported model type: {self.model_type}")
-        
-        return response
+        # Extract answer from result dict
+        return result.get("answer", "")
     
     async def act(
             self,
@@ -211,13 +175,15 @@ class MultimodalAgent(BasicAgent):
             Final response string, or dict with response and history if return_history=True
         """
         if verbose:
-            logging.info(f"\n{'='*60}")
+            logging.info(f"\n{'='*80}")
+            logging.info(f"📝 USER QUERY")
+            logging.info(f"{'='*80}")
             logging.info(f"Query: {query}")
             if images:
                 logging.info(f"Images: {len(images)} image(s)")
             if videos:
                 logging.info(f"Videos: {len(videos)} video(s)")
-            logging.info(f"{'='*60}\n")
+            logging.info(f"{'='*80}\n")
         
         # Build system prompt with tool descriptions
         system_prompt = self._build_system_prompt()
@@ -247,11 +213,29 @@ class MultimodalAgent(BasicAgent):
         
         for iteration in range(self.max_iterations):
             if verbose:
-                logging.info(f"\n--- Iteration {iteration + 1} ---")
+                logging.info(f"\n{'─'*80}")
+                logging.info(f"🔄 ITERATION {iteration + 1}")
+                logging.info(f"{'─'*80}")
             
             # Call LLM
             try:
+                if verbose:
+                    logging.info(f"\n📥 INPUT TO LLM:")
+                    # Show conversation context (without system)
+                    for idx, msg in enumerate(conversation_context, 1):
+                        if msg.get("type") == "text":
+                            text = msg.get("text", "")
+                            preview = text[:300] + "..." if len(text) > 300 else text
+                            logging.info(f"   [{idx}] {preview}")
+                        else:
+                            logging.info(f"   [{idx}] [multimodal: {msg.get('type')}]")
+                
                 response = await self._call_llm(system_prompt, conversation_context)
+                
+                if verbose:
+                    logging.info(f"\n📤 LLM RESPONSE:")
+                    logging.info(f"{response}")
+                    
             except Exception as e:
                 error_msg = f"Error calling LLM: {str(e)}"
                 logging.error(error_msg)
@@ -263,23 +247,18 @@ class MultimodalAgent(BasicAgent):
                     }
                 return error_msg
             
-            if verbose:
-                logging.info(f"Agent response: {response}")
-            
             # Detect tool call
             has_tool, tool_name, tool_args, thought = self._detect_tool(response)
             
             if has_tool:
-                if verbose:
-                    logging.info(f"Thought: {thought}")
-                    logging.info(f"Calling tool: {tool_name}")
-                    logging.info(f"Arguments: {tool_args}")
-                
                 # Execute tool
                 observation = self._call_tool(tool_name, tool_args)
                 
                 if verbose:
-                    logging.info(f"Observation: {observation}")
+                    logging.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
+                    logging.info(f"   Input: {tool_args}")
+                    obs_preview = str(observation)[:500] + "..." if len(str(observation)) > 500 else str(observation)
+                    logging.info(f"   Output: {obs_preview}")
                 
                 # Record history
                 history.append({
@@ -306,9 +285,9 @@ class MultimodalAgent(BasicAgent):
                 })
                 
                 if verbose:
-                    logging.info(f"\n{'='*60}")
-                    logging.info("Task completed!")
-                    logging.info(f"{'='*60}\n")
+                    logging.info(f"\n{'='*80}")
+                    logging.info("✅ TASK COMPLETED!")
+                    logging.info(f"{'='*80}")
                 
                 if return_history:
                     return {
