@@ -1,5 +1,31 @@
 # Tool Integration Guide
 
+## 快速开始
+
+### Agent 自动预加载（推荐）
+
+```python
+from agent.mm_agent import MultimodalAgent
+
+# Agent 根据 tool_bank 自动预加载模型
+agent = MultimodalAgent(
+    tool_bank=["ocr", "localize_objects", "get_text2images_similarity"],
+    preload_tools=True  # 默认开启
+)
+```
+
+### 手动控制预加载
+
+```python
+from tool.model_config import preload_tools
+
+# 预加载指定工具
+preload_tools(tool_bank=["ocr", "localize_objects"])
+
+# 指定 GPU 分配
+preload_tools(tool_bank=["ocr", "clip"], devices=["cuda:0", "cuda:1"])
+```
+
 ## 1. 非模型工具 (Non-Model Tool)
 
 适用于：计算器、图像处理、API 调用等不需要加载模型的工具。
@@ -38,6 +64,8 @@ class MyTool(BasicTool):
 
 适用于：OCR、目标检测、分割等需要加载神经网络模型的工具。
 
+**✨ 自动模型共享 + 自动解包**：设置 `model_id`，系统自动加载和解包模型！
+
 ```python
 # tool/ocr_tool.py
 import json
@@ -48,6 +76,8 @@ from tool.base_tool import ModelBasedTool, register_tool
 @register_tool(name="ocr")
 class OCRTool(ModelBasedTool):
     name = "ocr"
+    model_id = "ocr"  # 引用 model_config.py 中的模型
+    
     description_en = "Extract text from image"
     description_zh = "从图像中提取文字"
     parameters = {
@@ -59,20 +89,113 @@ class OCRTool(ModelBasedTool):
     }
     example = '{"image": "/path/to/image.jpg"}'
 
-    def load_model(self, device: str) -> None:
-        """加载模型到指定设备，首次调用时自动触发"""
-        from transformers import AutoModel
-        from tool.model_config import OCR_MODEL_PATH  # 从 model_config.py 导入路径
-        self.model = AutoModel.from_pretrained(OCR_MODEL_PATH).to(device)
-        self.device = device
-        self.is_loaded = True
-
     def _call_impl(self, params: Union[str, Dict]) -> str:
-        """模型加载后执行的实际逻辑"""
+        """实现工具逻辑（模型已自动加载到 self.reader）"""
         p = self.parse_params(params)
-        result = self.model.predict(p["image"])
+        result = self.reader.readtext(p["image"])  # self.reader 自动可用！
         return json.dumps({"success": True, "text": result})
 ```
+
+**无需实现 `load_model_components`**！模型组件根据 `model_config.py` 中的配置自动解包到对应属性。
+
+### 2.1 添加新模型到 model_config.py
+
+在 `tool/model_config.py` 中添加模型定义：
+
+```python
+# 1. 添加模型路径常量
+YOUR_MODEL_PATH = "/path/to/model"
+
+# 2. 定义模型加载函数（可以返回单个模型或元组）
+def _load_your_model(device: str):
+    """Load your model."""
+    from some_library import load_model
+    model = load_model(YOUR_MODEL_PATH)
+    model.to(device)
+    return model  # 单个模型，或返回 (model, processor) 元组
+
+# 3. 注册到 MODEL_REGISTRY（包含属性映射）
+MODEL_REGISTRY = {
+    "clip": {
+        "loader": _load_clip_model,
+        "attrs": ["model", "preprocess", "tokenizer"]  # 自动解包到这些属性
+    },
+    "your_model": {
+        "loader": _load_your_model,
+        "attrs": ["model"]  # 单个模型，或 ["model", "processor"] 多个组件
+    },
+}
+```
+
+**工具中直接使用对应属性**：设置 `model_id = "your_model"` 后，自动可用 `self.model`！
+
+### 2.2 工具初始化（关键）
+
+#### 方式 1：Agent 自动预加载（推荐）
+
+```python
+from agent.mm_agent import MultimodalAgent
+
+# Agent 根据 tool_bank 自动预加载需要的模型
+agent = MultimodalAgent(
+    tool_bank=["ocr", "localize_objects", "get_text2images_similarity"],
+    model_name="qwen2.5-vl-72b-instruct",
+    preload_tools=True,  # 默认开启
+    preload_devices=["cuda:0", "cuda:1"]  # 可选，默认自动检测
+)
+
+# 工具已预加载，首次调用无延迟
+result = await agent.act(query="What's in the image?", images=["test.jpg"])
+```
+
+#### 方式 2：手动预加载
+
+```python
+from tool.model_config import preload_tools
+
+# 预加载指定工具
+preload_tools(tool_bank=["ocr", "localize_objects", "clip"])
+
+# 预加载所有工具
+preload_tools()
+
+# 指定 GPU 分配
+preload_tools(tool_bank=["ocr", "clip"], devices=["cuda:0", "cuda:1"])
+```
+
+#### 工作原理
+
+- **按需加载**：只加载 `tool_bank` 中工具需要的模型
+- **智能分配**：一个模型一个 GPU（轮流分配）
+- **自动共享**：多个工具使用同一 `model_id` 时只加载一次
+- **即时可用**：预加载后工具调用无延迟
+
+#### 输出示例
+
+```
+🚀 Preloading 3 models for 5 tools across 2 device(s)...
+  ✓ clip                -> cuda:0
+  ✓ grounding_dino      -> cuda:1
+  ✓ ocr                 -> cuda:0
+```
+
+### 2.3 多模型工具（高级）
+
+单个工具使用多个模型时，将 `model_id` 设为列表：
+
+```python
+@register_tool(name="hybrid_tool")
+class HybridTool(ModelBasedTool):
+    model_id = ["clip", "grounding_dino"]  # 多个模型
+    
+    def _call_impl(self, params):
+        # 所有模型组件自动可用！
+        # CLIP: self.model, self.preprocess, self.tokenizer
+        # GroundingDINO: self.model, self.processor (同名覆盖，后者生效)
+        ...
+```
+
+**注意**：多个模型有同名属性时会覆盖。如需区分，在 `model_config.py` 中设置不同的属性名。
 
 ## 3. 文件输出（图像/视频工具）
 
@@ -122,18 +245,16 @@ print(f"my_tool: {r}")
 
 ### 模型工具特别注意
 
-1. **在 `model_config.py` 中配置模型路径**：
-   - 新增模型工具时，在 `tool/model_config.py` 中添加模型路径变量
-   - 在 `load_model` 中 `from tool.model_config import YOUR_MODEL_PATH` 引用
+1. **只需设置 `model_id`**：模型加载、解包、GPU 分配全自动
 
-2. **load_model 必须设置三个属性**：
-   - `self.model` - 模型实例
-   - `self.device` - 当前设备
-   - `self.is_loaded = True` - 标记已加载
+2. **模型组件自动可用**：根据 `model_config.py` 中的 `attrs` 配置自动解包
+   - `"ocr"` → `self.reader`
+   - `"clip"` → `self.model`, `self.preprocess`, `self.tokenizer`
+   - `"grounding_dino"` → `self.model`, `self.processor`
 
-3. **GPU 自动管理**：不需要手动选择 GPU，系统会自动选择空闲显卡
+3. **实现 `_call_impl` 而非 `call`**：`call` 自动处理模型加载
 
-4. **实现 `_call_impl` 而非 `call`**：`call` 会自动处理模型加载
+4. **无需实现 `load_model_components`**：系统自动解包
 
 ### 命名规范
 

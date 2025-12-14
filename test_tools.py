@@ -3,7 +3,13 @@
 import asyncio
 from tool import TOOL_REGISTRY
 
-print(f"Registered: {list(TOOL_REGISTRY.keys())}\n")
+print(f"Registered tools: {list(TOOL_REGISTRY.keys())}\n")
+
+# Option 1: Manual preload (if not using agent)
+# from tool.model_config import preload_tools
+# preload_tools(tool_bank=["estimate_region_depth", "estimate_object_depth"])
+
+# Option 2: Tools will be auto-preloaded when creating instances below
 
 IMG = "test_image.png"
 # IMG2 = "test_image2.png"

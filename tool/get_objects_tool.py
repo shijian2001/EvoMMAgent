@@ -12,6 +12,8 @@ class GetObjectsTool(ModelBasedTool):
     """A tool to detect objects in an image using RAM model."""
     
     name = "get_objects"
+    model_id = "ram"  # Automatic model sharing
+    
     description_en = "Detect and extract objects from an image using the Recognize Anything Model (RAM)."
     description_zh = "使用识别任何模型 (RAM) 从图像中检测和提取对象。"
     
@@ -26,29 +28,6 @@ class GetObjectsTool(ModelBasedTool):
         "required": ["image"]
     }
     example = '{"image": "image-0"}'
-    
-    def load_model(self, device: str) -> None:
-        """Load the RAM model to the specified device.
-        
-        Args:
-            device: Device to load the model on (automatically selected by GPU manager)
-        """
-        from ram.models import ram_plus
-        from tool.model_config import RAM_MODEL_PATH
-        
-        image_size = 384
-        vit_size = "swin_l"
-        
-        # Load model
-        self.model = ram_plus(
-            pretrained=RAM_MODEL_PATH,
-            image_size=image_size,
-            vit=vit_size
-        )
-        self.model.eval()
-        self.model = self.model.to(device)
-        self.device = device
-        self.is_loaded = True
     
     def _call_impl(self, params: Union[str, Dict]) -> str:
         """Execute the object detection operation.

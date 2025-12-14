@@ -14,6 +14,8 @@ class EstimateRegionDepthTool(ModelBasedTool):
     """A tool to estimate the depth of a specific region in an image using DepthAnything model."""
     
     name = "estimate_region_depth"
+    model_id = "depth_anything"  # Automatic model sharing
+    
     description_en = "Estimate the depth of a specific region in an image using DepthAnything model. The smaller the value is, the closer the region is to the camera."
     description_zh = "使用 DepthAnything 模型估计图像中特定区域的深度。值越小，表示该区域离相机越近。"
     
@@ -41,34 +43,6 @@ class EstimateRegionDepthTool(ModelBasedTool):
         "required": ["image", "bbox"]
     }
     example = '{"image": "image-0", "bbox": [0.1, 0.2, 0.5, 0.6], "mode": "mean"}'
-    
-    def load_model(self, device: str) -> None:
-        """Load the DepthAnything model checkpoint specified by config."""
-        from transformers import AutoImageProcessor, AutoModelForDepthEstimation
-        from tool.model_config import DEPTH_ANYTHING_MODEL_PATH
-        import os
-
-        # Use HF model ID for config/processor, load weights from local checkpoint
-        model_id = "depth-anything/Depth-Anything-V2-Small-hf"
-        
-        # Load image processor from HF
-        self.image_processor = AutoImageProcessor.from_pretrained(model_id)
-        
-        # Load model architecture from HF
-        self.model = AutoModelForDepthEstimation.from_pretrained(model_id)
-        
-        # Load local checkpoint weights if available
-        if os.path.exists(DEPTH_ANYTHING_MODEL_PATH):
-            state_dict = torch.load(DEPTH_ANYTHING_MODEL_PATH, map_location='cuda', weights_only=True)
-            # Handle both direct state dict and wrapped state dict
-            if 'state_dict' in state_dict:
-                state_dict = state_dict['state_dict']
-            self.model.load_state_dict(state_dict, strict=False)
-        
-        self.model.to(device)
-        self.model.eval()
-        self.device = device
-        self.is_loaded = True
     
     def _call_impl(self, params: Union[str, Dict]) -> str:
         """Execute the depth estimation operation.

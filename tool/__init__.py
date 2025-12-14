@@ -1,7 +1,7 @@
 """Tool modules for EvoMMAgent."""
 
 from tool.base_tool import BasicTool, ModelBasedTool, TOOL_REGISTRY, register_tool
-from tool.gpu_manager import get_free_gpu, acquire_gpu, release_gpu, get_gpu_status
+# GPU management removed - use preload_tools() for GPU allocation
 
 # Import tools to trigger registration
 from tool.calculator_tool import CalculatorTool

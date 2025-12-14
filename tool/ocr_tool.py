@@ -16,6 +16,8 @@ class OCRTool(ModelBasedTool):
     """A tool to extract text from images using EasyOCR."""
     
     name = "ocr"
+    model_id = "ocr"  # Automatic model sharing across OCR tool instances
+    
     description_en = "Extract texts from an image or return an empty string if no text is in the image. Note that the texts extracted may be incorrect or in the wrong order. It should be used as a reference only."
     description_zh = "从图像中提取文本，如果图像中没有文本则返回空字符串。注意提取的文本可能不正确或顺序错误，仅作为参考。"
     
@@ -30,21 +32,6 @@ class OCRTool(ModelBasedTool):
         "required": ["image"]
     }
     example = '{"image": "image-0"}'
-    
-    def load_model(self, device: str) -> None:
-        """Load the EasyOCR model to the specified device.
-        
-        Args:
-            device: Device to load the model on (automatically selected by GPU manager)
-        """
-        import easyocr
-        from tool.model_config import OCR_MODEL_DIR
-        
-        self.reader = easyocr.Reader(["en"],
-                                     gpu=device == "cuda",
-                                     model_storage_directory=OCR_MODEL_DIR)
-        self.device = device
-        self.is_loaded = True
     
     def _call_impl(self, params: Union[str, Dict]) -> str:
         """Execute the OCR operation.

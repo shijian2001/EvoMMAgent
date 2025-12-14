@@ -13,6 +13,8 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
     """A tool to compute CLIP similarity between one image and a list of other images."""
     
     name = "get_image2images_similarity"
+    model_id = "clip"  # Automatic model sharing with other CLIP tools!
+    
     description_en = "Get the similarity between one image and a list of other images. Note that this similarity score may not be accurate and should be used as a reference only."
     description_zh = "计算一个图像与一组其他图像之间的相似度。注意此相似度分数可能不准确，仅作为参考。"
     
@@ -38,36 +40,6 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
     }
     example = '{"image": "image-0", "other_images": ["image-1", "image-2"]}'
     
-    def __init__(self, cfg=None, use_zh=False):
-        """Initialize the GetImageToImagesSimilarity tool."""
-        super().__init__(cfg, use_zh)
-        self.model_version = None
-        self.preprocess = None
-    
-    def load_model(self, device: str) -> None:
-        """Load the CLIP model to the specified device.
-        
-        Args:
-            device: Device to load the model on (automatically selected by GPU manager)
-        """
-        import open_clip
-        from tool.model_config import CLIP_MODEL_VERSION, CLIP_MODEL_PRETRAINED
-        
-        # Use default model version if not set
-        model_version = self.model_version or CLIP_MODEL_VERSION
-        pretrained = CLIP_MODEL_PRETRAINED
-        
-        # Load model, transforms, and tokenizer
-        self.model, _, self.preprocess = open_clip.create_model_and_transforms(
-            model_version,
-            pretrained=pretrained,
-        )
-        self.model.eval()
-        self.model = self.model.to(device)
-        self.device = device
-        self.is_loaded = True
-        # self.model_version = model_version
-    
     def _call_impl(self, params: Union[str, Dict]) -> str:
         """Execute the image similarity computation operation.
         
@@ -81,7 +53,6 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
         params_dict = self.parse_params(params)
         image_path = params_dict["image"]
         other_images = params_dict["other_images"]
-        tool_version = params_dict.get("tool_version", "ViT-H-14-378-quickgelu")
         
         if not isinstance(other_images, list) or len(other_images) == 0:
             return json.dumps({
@@ -90,14 +61,6 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
             })
         
         try:
-            # Check if model needs to be reloaded (different version)
-            if not self.is_loaded or self.model is None or tool_version != self.model_version:
-                if self.is_loaded:
-                    self.unload_model()
-                # Set model version before loading
-                self.model_version = tool_version
-                self.load_model(self.device)
-            
             # Process reference image
             reference_image = image_processing(image_path)
             reference_image_tensor = self.preprocess(reference_image).unsqueeze(0).to(self.device)

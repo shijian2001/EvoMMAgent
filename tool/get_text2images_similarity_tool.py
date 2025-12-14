@@ -13,6 +13,8 @@ class GetTextToImagesSimilarityTool(ModelBasedTool):
     """A tool to compute CLIP similarity between one text and a list of images."""
     
     name = "get_text2images_similarity"
+    model_id = "clip"  # Automatic model sharing with other CLIP tools!
+    
     description_en = "Get the similarity between one text and a list of images. Note that this similarity score may not be accurate and should be used as a reference only."
     description_zh = "计算一个文本与一组图像之间的相似度。注意此相似度分数可能不准确，仅作为参考。"
     
@@ -38,38 +40,6 @@ class GetTextToImagesSimilarityTool(ModelBasedTool):
     }
     example = '{"text": "a black and white cat", "images": ["image-0", "image-1"]}'
     
-    def __init__(self, cfg=None, use_zh=False):
-        """Initialize the GetTextToImagesSimilarity tool."""
-        super().__init__(cfg, use_zh)
-        self.model_version = None
-        self.preprocess = None
-        self.tokenizer = None
-    
-    def load_model(self, device: str) -> None:
-        """Load the CLIP model to the specified device.
-        
-        Args:
-            device: Device to load the model on (automatically selected by GPU manager)
-        """
-        import open_clip
-        from tool.model_config import CLIP_MODEL_VERSION, CLIP_MODEL_PRETRAINED
-        
-        # Use default model version if not set
-        model_version = self.model_version or CLIP_MODEL_VERSION
-        pretrained = CLIP_MODEL_PRETRAINED
-        
-        # Load model, transforms, and tokenizer
-        self.model, _, self.preprocess = open_clip.create_model_and_transforms(
-            model_version,
-            pretrained=pretrained
-        )
-        self.model.eval()
-        self.model = self.model.to(device)
-        self.tokenizer = open_clip.get_tokenizer(model_version)
-        self.device = device
-        self.is_loaded = True
-        self.model_version = model_version
-    
     def _call_impl(self, params: Union[str, Dict]) -> str:
         """Execute the text-to-image similarity computation operation.
         
@@ -83,7 +53,6 @@ class GetTextToImagesSimilarityTool(ModelBasedTool):
         params_dict = self.parse_params(params)
         text = params_dict["text"]
         images = params_dict["images"]
-        tool_version = params_dict.get("tool_version", "ViT-H-14-378-quickgelu")
         
         if not isinstance(images, list) or len(images) == 0:
             return json.dumps({
@@ -92,14 +61,6 @@ class GetTextToImagesSimilarityTool(ModelBasedTool):
             })
         
         try:
-            # Check if model needs to be reloaded (different version)
-            if not self.is_loaded or self.model is None or tool_version != self.model_version:
-                if self.is_loaded:
-                    self.unload_model()
-                # Set model version before loading
-                self.model_version = tool_version
-                self.load_model(self.device)
-            
             # Tokenize reference text
             text_tokens = self.tokenizer([text]).to(self.device)
             

@@ -11,6 +11,8 @@ from tool.visualize_regions_tool import VisualizeRegionsOnImageTool
 @register_tool(name="localize_objects")
 class LocalizeObjectsTool(ModelBasedTool):
     name = "localize_objects"
+    model_id = "grounding_dino"  # Automatic model sharing
+    
     description_en = "Localize one or multiple objects/regions with bounding boxes. This tool may output objects that don't exist or miss objects that do. You should use the output only as weak evidence for reference. When answering questions about the image, you should double-check the detected objects. You should be especially cautious about the total number of regions detected, which can be more or less than the actual number."
     description_zh = "定位图像中的一个或多个对象/区域，并返回边界框。此工具可能输出不存在的对象或遗漏存在的对象。输出仅作为弱证据参考。回答图像问题时，应仔细检查检测到的对象。特别要注意检测到的区域总数，可能多于或少于实际数量。"
     parameters = {
@@ -22,16 +24,6 @@ class LocalizeObjectsTool(ModelBasedTool):
         "required": ["image", "objects"]
     }
     example = '{"image": "image-0", "objects": ["dog", "cat"]}'
-
-    def load_model(self, device: str) -> None:
-        from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
-        from accelerate import Accelerator
-        from tool.model_config import GROUNDING_DINO_WEIGHTS_PATH
-        model_id = GROUNDING_DINO_WEIGHTS_PATH
-        self.processor = AutoProcessor.from_pretrained(model_id)
-        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(device)
-        self.device = device
-        self.is_loaded = True
 
     def _call_impl(self, params: Union[str, Dict]) -> str:
         params_dict = self.parse_params(params)

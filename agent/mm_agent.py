@@ -41,6 +41,8 @@ class MultimodalAgent(BasicAgent):
             max_tokens: Optional[int] = None,
             enable_memory: bool = True,
             memory_dir: str = "memory",
+            preload_tools: bool = True,
+            preload_devices: Optional[List[str]] = None,
     ):
         """Initialize the multimodal agent.
         
@@ -64,6 +66,8 @@ class MultimodalAgent(BasicAgent):
             max_tokens: Maximum tokens in response
             enable_memory: Whether to enable memory system for saving traces
             memory_dir: Directory for memory storage
+            preload_tools: Whether to preload tool models at initialization (default: True)
+            preload_devices: List of devices for preloading, e.g., ["cuda:0", "cuda:1"] (default: auto-detect)
         """
         super().__init__(
             name=name,
@@ -83,6 +87,12 @@ class MultimodalAgent(BasicAgent):
         self.max_tokens = max_tokens
         self.enable_memory = enable_memory
         self.memory_dir = memory_dir
+        
+        # Preload tool models if requested
+        if preload_tools and tool_bank:
+            from tool.model_config import preload_tools as preload_tool_models
+            tool_names = [t if isinstance(t, str) else t.get("name") for t in tool_bank]
+            preload_tool_models(tool_bank=tool_names, devices=preload_devices)
         
         # Auto-load API keys if not provided
         if api_keys is None:

@@ -6,7 +6,6 @@ import jinja2
 from typing import Optional, List, Union, Dict
 from abc import ABC, abstractmethod
 from tool.base_tool import BasicTool, ModelBasedTool, TOOL_REGISTRY
-from tool.gpu_manager import acquire_gpu, release_gpu
 
 import tool
 
@@ -107,7 +106,6 @@ class BasicAgent(ABC):
         if isinstance(instance, ModelBasedTool):
             logger.info(f'Loading {tool_name}...')
             instance.ensure_loaded()
-            acquire_gpu(instance.device)
             logger.info(f'{tool_name} loaded on {instance.device}')
 
     def _call_tool(
@@ -224,7 +222,6 @@ class BasicAgent(ABC):
         for name, t in self.tool_bank.items():
             if isinstance(t, ModelBasedTool) and t.is_loaded:
                 logger.info(f'Unloading {name} from {t.device}')
-                release_gpu(t.device)
                 t.unload_model()
     
     def __del__(self):
