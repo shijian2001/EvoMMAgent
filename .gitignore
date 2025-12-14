@@ -59,3 +59,5 @@ memory/
 
 # Model config (local paths)
 tool/model_config.py
+
+envs/
