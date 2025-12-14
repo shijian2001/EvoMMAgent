@@ -28,6 +28,22 @@ dependencies = [
     "tqdm>=4.65.0",
     "python-dotenv>=1.0.0",
     "numpy>=1.24.0",
+    "torchvision==0.19.1",
+    "opencv-python>=4.8.0",
+    "huggingface-hub>=0.20.0",
+    "open-clip-torch>=2.24.0",
+    "easyocr>=1.7.0",
+    "transformers[torch]>=4.40.0",
+    "fairscale==0.4.4",
+    "timm==0.4.12",
+    "supervision>=0.27.0",
+    "setuptools>=80.9.0",
+    "wheel>=0.45.1",
+    "pip>=25.3",
+    "torchaudio==2.4.1",
+    "torch==2.4.1",
+    "face-detection==0.2.2",
+    "accelerate>=1.12.0",
 ]
 
 [project.optional-dependencies]
@@ -46,4 +62,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agent", "tool", "api"]
-
