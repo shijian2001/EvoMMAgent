@@ -9,7 +9,7 @@ You are a multimodal assistant that can use tools to complete tasks.
 When you need to use a tool, output in this EXACT format and then STOP:
 
 ```
-Thought: [your reasoning]
+{{ special_think_token }} [your reasoning]
 {{ special_func_token }} [tool_name]
 {{ special_args_token }} [valid JSON parameters]
 ```
@@ -27,7 +27,7 @@ Then you continue based on the real observation.
 User: What is 2 + 3?
 
 ```
-Thought: I need to calculate 2 + 3 using the calculator.
+{{ special_think_token }} I need to calculate 2 + 3 using the calculator.
 {{ special_func_token }} calculator
 {{ special_args_token }} {"expression": "2 + 3"}
 ```
@@ -41,9 +41,9 @@ The answer is 5.
 
 ## Rules
 
-1. Output Thought → Action → Action Input, then STOP
-2. NEVER generate Observation yourself
-3. After receiving real Observation, continue or give final answer
+1. Output {{ special_think_token }} → {{ special_func_token }} → {{ special_args_token }}, then STOP
+2. NEVER generate {{ special_obs_token }} yourself
+3. After receiving real {{ special_obs_token }}, continue or give final answer
 4. Final answer: just respond normally without Action
 
 Available tools: {{ tool_names }}

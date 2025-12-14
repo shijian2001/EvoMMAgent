@@ -2,7 +2,6 @@
 
 from typing import Union, Dict
 from tool.base_tool import BasicTool, register_tool
-from tool.utils.temp_manager import get_temp_manager
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -137,13 +136,8 @@ class VisualizeRegionsOnImageTool(BasicTool):
                         draw.rectangle((x1, y2, x1 + w, y2 + h), fill=color)
                         draw.text((x1, y2), label, fill=text_color, font=font)
             
-            # Save the output
-            if not output_path:
-                output_path = get_temp_manager().get_output_path("visualize_regions", image_path, "labeled", ".png")
-            
-            img_labeled.save(output_path)
-            
-            return f"Image saved to: {output_path}"
+            # Return PIL Image object
+            return img_labeled
             
         except FileNotFoundError:
             return f"Error: Image file not found at {image_path}"

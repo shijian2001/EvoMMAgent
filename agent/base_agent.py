@@ -32,6 +32,7 @@ class BasicAgent(ABC):
             special_func_token: str = "\nAction:",
             special_args_token: str = "\nAction Input:",
             special_obs_token: str = "\nObservation:",
+            special_think_token: str = "Thought:",
     ):
         """Initialize the agent with tools and configuration.
         
@@ -47,6 +48,7 @@ class BasicAgent(ABC):
             special_func_token: Token to mark action/function calls
             special_args_token: Token to mark action input
             special_obs_token: Token to mark observations
+            special_think_token: Token to mark thinking/reasoning section
         """
         self.name = name
         self.description = description_en if not use_zh else description_zh
@@ -63,6 +65,9 @@ class BasicAgent(ABC):
             lstrip_blocks=True
         )
         self.tool_description_jinja_file = tool_description_template_zh_file if use_zh else tool_description_template_en_file
+        
+        # Special tokens for tool calling
+        self.special_think_token = special_think_token
         self.special_func_token = special_func_token
         self.special_args_token = special_args_token
         self.special_obs_token = special_obs_token
@@ -136,10 +141,20 @@ class BasicAgent(ABC):
             logging.info(error_message)
             return error_message
 
+        # If result is a dict (new format with PIL.Image), return as is
+        if isinstance(tool_result, dict):
+            return tool_result
+        
+        # If result is a string (legacy format), return as is
         if isinstance(tool_result, str):
             return tool_result
-        else:
+        
+        # Otherwise, try to serialize
+        try:
             return json.dumps(tool_result, ensure_ascii=False, indent=4)
+        except (TypeError, ValueError):
+            # Can't serialize (e.g., contains PIL.Image), return as is
+            return tool_result
 
     def _detect_tool(
             self,

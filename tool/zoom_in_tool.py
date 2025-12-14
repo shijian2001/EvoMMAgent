@@ -6,7 +6,6 @@ from PIL import Image
 
 from tool.base_tool import BasicTool, register_tool
 from tool.utils.image_utils import image_processing
-from tool.utils.temp_manager import get_temp_manager
 
 
 @register_tool(name="zoom_in")
@@ -22,7 +21,7 @@ class ZoomInTool(BasicTool):
         "properties": {
             "image": {
                 "type": "string",
-                "description": "Path to the image"
+                "description": "Image ID (e.g., 'img_0')"
             },
             "bbox": {
                 "type": "array",
@@ -39,7 +38,7 @@ class ZoomInTool(BasicTool):
         },
         "required": ["image", "bbox", "zoom_factor"]
     }
-    example = '{"image": "/path/to/image.jpg", "bbox": [0.25, 0.25, 0.75, 0.75], "zoom_factor": 2.0}'
+    example = '{"image": "img_0", "bbox": [0.25, 0.25, 0.75, 0.75], "zoom_factor": 2.0}'
     
     def call(self, params: Union[str, Dict]) -> str:
         params_dict = self.parse_params(params)
@@ -71,14 +70,11 @@ class ZoomInTool(BasicTool):
         new_size = (int(cropped.width * zoom_factor), int(cropped.height * zoom_factor))
         zoomed = cropped.resize(new_size, Image.LANCZOS)
         
-        # Save
-        output_path = get_temp_manager().get_output_path("zoom_in", image_path, "zoomed")
-        zoomed.save(output_path)
-        
-        return json.dumps({
+        # Return dict with PIL Image object
+        return {
             "success": True,
-            "output_image": output_path,
+            "output_image": zoomed,  # PIL.Image object
             "original_size": [W, H],
             "cropped_size": list(cropped.size),
             "zoomed_size": list(zoomed.size),
-        })
+        }

@@ -4,6 +4,7 @@ This agent extends BasicAgent to work with vision-language models,
 supporting multimodal inputs (images, videos, or mixed) and tool calling.
 """
 
+import os
 import logging
 import json
 from typing import List, Dict, Optional, Union, Any
@@ -38,6 +39,8 @@ class MultimodalAgent(BasicAgent):
             base_url: str = "http://redservingapi.devops.xiaohongshu.com/v1",
             temperature: float = 1.0,
             max_tokens: Optional[int] = None,
+            enable_memory: bool = True,
+            memory_dir: str = "memory",
     ):
         """Initialize the multimodal agent.
         
@@ -59,6 +62,8 @@ class MultimodalAgent(BasicAgent):
             base_url: Base URL for API endpoint
             temperature: Sampling temperature
             max_tokens: Maximum tokens in response
+            enable_memory: Whether to enable memory system for saving traces
+            memory_dir: Directory for memory storage
         """
         super().__init__(
             name=name,
@@ -76,6 +81,8 @@ class MultimodalAgent(BasicAgent):
         self.mm_agent_template_file = mm_agent_template_zh_file if use_zh else mm_agent_template_en_file
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.enable_memory = enable_memory
+        self.memory_dir = memory_dir
         
         # Auto-load API keys if not provided
         if api_keys is None:
@@ -116,6 +123,7 @@ class MultimodalAgent(BasicAgent):
         template_vars = {
             "tool_names": tool_names,
             "tool_description": tool_descriptions,
+            "special_think_token": self.special_think_token,
             "special_func_token": self.special_func_token,
             "special_args_token": self.special_args_token,
             "special_obs_token": self.special_obs_token,
@@ -185,11 +193,51 @@ class MultimodalAgent(BasicAgent):
                 logging.info(f"Videos: {len(videos)} video(s)")
             logging.info(f"{'='*80}\n")
         
+        # Initialize memory if enabled
+        memory = None
+        task_id = None
+        if self.enable_memory:
+            from mm_memory import Memory
+            memory = Memory(base_dir=self.memory_dir)
+            task_id = memory.start_task(query)
+            
+            if verbose:
+                logging.info(f"💾 Memory enabled: Task ID = {task_id}\n")
+            
+            # Register inputs
+            if images:
+                for img in images:
+                    img_path = img if isinstance(img, str) else img.get("image")
+                    if img_path and os.path.exists(img_path):
+                        memory.add_input(img_path, "img")
+            
+            if videos:
+                for vid in videos:
+                    vid_path = vid if isinstance(vid, str) else vid.get("video")
+                    if vid_path and os.path.exists(vid_path):
+                        memory.add_input(vid_path, "vid")
+        
         # Build system prompt with tool descriptions
         system_prompt = self._build_system_prompt()
         
         # Build initial user prompt with multimodal content
-        user_content = [{"type": "text", "text": query}]
+        # If memory is enabled, prepend available resource IDs to query
+        if memory:
+            available_refs = []
+            if images:
+                # Get registered image IDs from memory
+                for idx in range(len(memory.trace_data["input"].get("images", []))):
+                    available_refs.append(memory.trace_data["input"]["images"][idx]["id"])
+            
+            if available_refs:
+                refs_text = ", ".join(available_refs)
+                query_with_refs = f"Available images: {refs_text}\n\n{query}"
+            else:
+                query_with_refs = query
+        else:
+            query_with_refs = query
+        
+        user_content = [{"type": "text", "text": query_with_refs}]
         
         # Add images
         if images:
@@ -251,14 +299,87 @@ class MultimodalAgent(BasicAgent):
             has_tool, tool_name, tool_args, thought = self._detect_tool(response)
             
             if has_tool:
-                # Execute tool
-                observation = self._call_tool(tool_name, tool_args)
+                # Log thinking to memory
+                if memory and thought:
+                    memory.log_think(thought, self.special_think_token)
+                
+                # Parse original properties (for trace)
+                original_properties = None
+                resolved_args_str = tool_args
+                
+                # Resolve IDs to file paths before calling tool
+                if memory:
+                    try:
+                        tool_args_dict = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
+                        original_properties = tool_args_dict.copy()  # Save original for trace
+                        resolved_args = memory.resolve_ids(tool_args_dict)
+                        resolved_args_str = json.dumps(resolved_args)
+                    except:
+                        pass  # If parsing fails, use original args
+                
+                # Execute tool with resolved paths
+                tool_result = self._call_tool(tool_name, resolved_args_str)
+                
+                # Handle different return types
+                if isinstance(tool_result, dict):
+                    # Tool returned dict (may contain PIL.Image)
+                    output_object = tool_result.get("output_image") or tool_result.get("output_path")
+                    observation_data = {k: v for k, v in tool_result.items() 
+                                      if k not in ["output_image", "output_path", "success"]}
+                    # Serialize for display (without PIL.Image)
+                    observation = json.dumps(observation_data) if observation_data else "success"
+                elif isinstance(tool_result, str):
+                    # Tool returned string (legacy format or no output)
+                    observation = tool_result
+                    try:
+                        observation_dict = json.loads(observation)
+                        output_object = observation_dict.get("output_image") or observation_dict.get("output_path")
+                        observation_data = {k: v for k, v in observation_dict.items() 
+                                          if k not in ["output_image", "output_path", "success"]}
+                    except:
+                        output_object = None
+                        observation_data = None
+                else:
+                    observation = str(tool_result)
+                    output_object = None
+                    observation_data = None
                 
                 if verbose:
                     logging.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
                     logging.info(f"   Input: {tool_args}")
                     obs_preview = str(observation)[:500] + "..." if len(str(observation)) > 500 else str(observation)
                     logging.info(f"   Output: {obs_preview}")
+                
+                # Log action to memory
+                if memory:
+                    try:
+                        # Use original properties (with IDs) for trace
+                        properties = original_properties if original_properties is not None else (
+                            json.loads(tool_args) if isinstance(tool_args, str) else tool_args
+                        )
+                        
+                        if output_object:
+                            # Has multimodal output - let memory handle it
+                            output_id = memory.log_action(
+                                tool=tool_name,
+                                properties=properties,
+                                observation=observation_data or {},
+                                output_object=output_object,  # PIL.Image or file path
+                                output_type="img"
+                            )
+                            # Update observation with id for LLM context
+                            if output_id:
+                                observation = f"Output saved as {output_id}"
+                        else:
+                            # No multimodal output - observation as is
+                            memory.log_action(
+                                tool=tool_name,
+                                properties=properties,
+                                observation=observation
+                            )
+                    except Exception as e:
+                        if verbose:
+                            logging.warning(f"Failed to log action to memory: {e}")
                 
                 # Record history
                 history.append({
@@ -279,6 +400,12 @@ class MultimodalAgent(BasicAgent):
                 
             else:
                 # No tool call, agent finished
+                if memory:
+                    memory.log_answer(response)
+                    memory.end_task(success=True)
+                    if verbose:
+                        logging.info(f"💾 Saved trace to: {memory.task_dir}/trace.json")
+                
                 history.append({
                     "iteration": iteration + 1,
                     "final_response": response,
@@ -289,23 +416,36 @@ class MultimodalAgent(BasicAgent):
                     logging.info("✅ TASK COMPLETED!")
                     logging.info(f"{'='*80}")
                 
+                result = {
+                    "response": response,
+                    "history": history,
+                    "success": True,
+                }
+                if task_id:
+                    result["task_id"] = task_id
+                
                 if return_history:
-                    return {
-                        "response": response,
-                        "history": history,
-                        "success": True,
-                    }
+                    return result
                 return response
         
         # Max iterations reached
         final_msg = "Maximum iterations reached without completing the task."
         logging.warning(final_msg)
         
+        if memory:
+            memory.end_task(success=False)
+            if verbose:
+                logging.info(f"💾 Saved incomplete trace to: {memory.task_dir}/trace.json")
+        
+        result = {
+            "response": final_msg,
+            "history": history,
+            "success": False,
+        }
+        if task_id:
+            result["task_id"] = task_id
+        
         if return_history:
-            return {
-                "response": final_msg,
-                "history": history,
-                "success": False,
-            }
+            return result
         return final_msg
 

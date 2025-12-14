@@ -5,7 +5,6 @@ from typing import Union, Dict
 
 from tool.base_tool import BasicTool, register_tool
 from tool.utils.image_utils import image_processing
-from tool.utils.temp_manager import get_temp_manager
 
 
 @register_tool(name="crop")
@@ -21,7 +20,7 @@ class CropTool(BasicTool):
         "properties": {
             "image": {
                 "type": "string",
-                "description": "Path to the image to crop"
+                "description": "Image ID (e.g., 'img_0')"
             },
             "bbox": {
                 "type": "array",
@@ -33,7 +32,7 @@ class CropTool(BasicTool):
         },
         "required": ["image", "bbox"]
     }
-    example = '{"image": "/path/to/image.jpg", "bbox": [0.1, 0.2, 0.5, 0.6]}'
+    example = '{"image": "img_0", "bbox": [0.1, 0.2, 0.5, 0.6]}'
     
     def call(self, params: Union[str, Dict]) -> str:
         params_dict = self.parse_params(params)
@@ -58,13 +57,10 @@ class CropTool(BasicTool):
         crop_box = (int(bbox[0] * W), int(bbox[1] * H), int(bbox[2] * W), int(bbox[3] * H))
         cropped = image.crop(crop_box)
         
-        # Save
-        output_path = get_temp_manager().get_output_path("crop", image_path, "cropped")
-        cropped.save(output_path)
-        
-        return json.dumps({
+        # Return dict with PIL Image object
+        return {
             "success": True,
-            "output_image": output_path,
+            "output_image": cropped,  # PIL.Image object
             "original_size": [W, H],
             "cropped_size": list(cropped.size),
-        })
+        }

@@ -6,7 +6,6 @@ import torch
 from PIL import Image
 from tool.base_tool import ModelBasedTool, register_tool
 from tool.utils.image_utils import image_processing
-from tool.utils.temp_manager import get_temp_manager
 from tool.visualize_regions_tool import VisualizeRegionsOnImageTool
 
 @register_tool(name="localize_objects")
@@ -76,19 +75,14 @@ class LocalizeObjectsTool(ModelBasedTool):
                 "image_path": image_path_full,
                 "regions": [{"bbox": r["bbox"], "label": r["label"]} for r in regions]
             }
-            visualize_result = visualize_tool.call(visualize_params)
-            if "Image saved to: " in visualize_result:
-                output_image_path = visualize_result.replace("Image saved to: ", "")
-            else:
-                output_image_path = get_temp_manager().get_output_path(
-                    "localize_objects", image_path, "localized", ".png"
-                )
-                original_image.save(output_image_path)
-            return json.dumps({
+            output_image = visualize_tool.call(visualize_params)
+            
+            # Return dict with PIL Image
+            return {
                 "success": True,
-                "image": output_image_path,
+                "output_image": output_image,  # PIL.Image object
                 "regions": regions
-            })
+            }
         except FileNotFoundError as e:
             return json.dumps({"success": False, "error": f"Image file not found: {str(e)}"})
         except Exception as e:

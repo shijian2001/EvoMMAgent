@@ -6,7 +6,6 @@ from typing import Union, Dict
 
 from tool.base_tool import ModelBasedTool, register_tool
 from tool.utils.image_utils import image_processing
-from tool.utils.temp_manager import get_temp_manager
 from tool.visualize_regions_tool import VisualizeRegionsOnImageTool
 
 
@@ -132,23 +131,14 @@ class DetectFacesTool(ModelBasedTool):
                 "image_path": image_path_full,
                 "regions": regions
             }
-            visualize_result = visualize_tool.call(visualize_params)
+            output_image = visualize_tool.call(visualize_params)
             
-            # Extract output image path from visualize result
-            if "Image saved to: " in visualize_result:
-                output_image_path = visualize_result.replace("Image saved to: ", "")
-            else:
-                # Fallback: save image manually if visualization failed
-                output_image_path = get_temp_manager().get_output_path(
-                    "detect_faces", image_path, "faces_detected", ".png"
-                )
-                image.save(output_image_path)
-            
-            return json.dumps({
+            # Return dict with PIL Image
+            return {
                 "success": True,
-                "image": output_image_path,
+                "output_image": output_image,  # PIL.Image object
                 "regions": regions
-            })
+            }
             
         except FileNotFoundError as e:
             return json.dumps({
