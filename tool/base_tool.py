@@ -46,6 +46,24 @@ class BasicTool(ABC):
     async def call_async(self, params: Union[str, Dict]) -> Any:
         """Async version."""
         return await asyncio.to_thread(self.call, params)
+    
+    def generate_description(
+        self, 
+        properties: Dict[str, Any],
+        observation: Dict[str, Any]
+    ) -> str:
+        """Generate human-readable description for multimodal output.
+        
+        Override this method in tools that produce multimodal outputs.
+        
+        Args:
+            properties: Original properties with IDs (e.g., {"image": "img_0"})
+            observation: Tool output data
+            
+        Returns:
+            Description string for LLM context
+        """
+        return f"{self.name} output"
 
     def parse_params(self, params: Union[str, Dict]) -> Dict:
         """Parse and validate parameters."""
@@ -120,7 +138,7 @@ class ModelBasedTool(BasicTool):
                 try:
                     import torch
                     device = "cuda:0" if torch.cuda.is_available() else "cpu"
-                except:
+                except (ImportError, RuntimeError):
                     device = "cpu"
             self.load_model(device)
             if self.is_loaded and self.model is not None:

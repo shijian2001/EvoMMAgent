@@ -90,11 +90,11 @@ class VisualizeRegionsOnImageTool(BasicTool):
             # Try to load a font, fall back to default if not available
             try:
                 font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf', 16)
-            except:
+            except (OSError, IOError):
                 try:
                     # Try common macOS font path
                     font = ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc', 16)
-                except:
+                except (OSError, IOError):
                     # Fall back to default font
                     font = ImageFont.load_default()
             
@@ -138,4 +138,11 @@ class VisualizeRegionsOnImageTool(BasicTool):
             return {"error": f"Image file not found at {image_path}"}
         except Exception as e:
             return {"error": str(e)}
+    
+    def generate_description(self, properties, observation):
+        """Generate description for visualized regions."""
+        img = properties.get("image_path", "image")
+        regions = properties.get("regions", [])
+        num_regions = len(regions) if isinstance(regions, list) else 0
+        return f"Visualized {num_regions} regions on {img}"
 

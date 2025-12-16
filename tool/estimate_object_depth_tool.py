@@ -36,7 +36,7 @@ class EstimateObjectDepthTool(BasicTool):
         },
         "required": ["image", "object"]
     }
-    example = '{"image": "image-0", "object": "a black cat", "mode": "mean"}'
+    example = '{"image": "img_0", "object": "a black cat", "mode": "mean"}'
     
     def call(self, params: Union[str, Dict]) -> Dict:
         """Execute the object depth estimation operation.

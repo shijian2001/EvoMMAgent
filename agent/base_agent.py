@@ -282,8 +282,8 @@ class BasicAgent(ABC):
         """Auto cleanup on deletion."""
         try:
             self.cleanup()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Cleanup failed during deletion: {e}")
     
     def __enter__(self):
         return self

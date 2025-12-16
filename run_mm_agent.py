@@ -6,7 +6,6 @@ import os
 import logging
 import json
 
-# 配置 logging 显示到终端
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 sys.path.append('.')

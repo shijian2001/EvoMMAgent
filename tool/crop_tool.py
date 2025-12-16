@@ -59,3 +59,9 @@ class CropTool(BasicTool):
         
         # Return dict with PIL Image object
         return {"output_image": cropped}
+    
+    def generate_description(self, properties, observation):
+        """Generate description for cropped image."""
+        img = properties.get("image", "image")
+        bbox = properties.get("bbox", [])
+        return f"Cropped {img} at bbox {bbox}"

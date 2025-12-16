@@ -12,6 +12,8 @@ from typing import List, Dict, Optional, Union, Any
 from agent.base_agent import BasicAgent
 from api import APIPool, load_api_keys
 
+logger = logging.getLogger(__name__)
+
 
 class MultimodalAgent(BasicAgent):
     """Agent that can process multimodal inputs (text, images, videos) and use tools.
@@ -29,19 +31,20 @@ class MultimodalAgent(BasicAgent):
             use_zh: bool = False,
             model_name: str = "qwen2.5-vl-72b-instruct",
             api_keys: Optional[List[str]] = None,
-            max_iterations: int = 10,
+            max_iterations: Optional[int] = None,
             system_template_dir: str = "./template",
             tool_description_template_en_file: str = "ToolCaller_EN.jinja2",
             tool_description_template_zh_file: str = "ToolCaller_ZH.jinja2",
             mm_agent_template_en_file: str = "MMAgent_EN.jinja2",
             mm_agent_template_zh_file: str = "MMAgent_ZH.jinja2",
-            max_concurrent_per_key: int = 10,
-            base_url: str = "http://redservingapi.devops.xiaohongshu.com/v1",
-            temperature: float = 1.0,
+            max_concurrent_per_key: Optional[int] = None,
+            base_url: Optional[str] = None,
+            temperature: Optional[float] = None,
             max_tokens: Optional[int] = None,
-            enable_memory: bool = True,
-            memory_dir: str = "memory",
+            enable_memory: Optional[bool] = None,
+            memory_dir: Optional[str] = None,
             preload_devices: Optional[List[str]] = None,
+            config: Optional[Any] = None,
     ):
         """Initialize the multimodal agent.
         
@@ -53,20 +56,43 @@ class MultimodalAgent(BasicAgent):
             use_zh: Whether to use Chinese language
             model_name: Name of the vision-language model to use
             api_keys: Optional list of API keys (auto-loaded from env if not provided)
-            max_iterations: Maximum ReAct iterations
+            max_iterations: Maximum ReAct iterations (uses config default if None)
             system_template_dir: Directory for Jinja2 templates
             tool_description_template_en_file: English tool description template
             tool_description_template_zh_file: Chinese tool description template
             mm_agent_template_en_file: English multimodal agent system prompt template
             mm_agent_template_zh_file: Chinese multimodal agent system prompt template
-            max_concurrent_per_key: Maximum concurrent requests per API key
-            base_url: Base URL for API endpoint
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens in response
-            enable_memory: Whether to enable memory system for saving traces
-            memory_dir: Directory for memory storage
+            max_concurrent_per_key: Maximum concurrent requests per API key (uses config default if None)
+            base_url: Base URL for API endpoint (uses config default if None)
+            temperature: Sampling temperature (uses config default if None)
+            max_tokens: Maximum tokens in response (uses config default if None)
+            enable_memory: Whether to enable memory system (uses config default if None)
+            memory_dir: Directory for memory storage (uses config default if None)
             preload_devices: Devices for preloading models (inherited from base_agent)
+            config: Optional Config object for default values (auto-loads if None)
         """
+        # Load config for defaults
+        if config is None:
+            from config import Config
+            config = Config.default()
+        self.config = config
+        
+        # Apply config defaults if parameters not specified
+        if max_iterations is None:
+            max_iterations = config.agent.max_iterations
+        if temperature is None:
+            temperature = config.agent.temperature
+        if max_tokens is None:
+            max_tokens = config.agent.max_tokens
+        if enable_memory is None:
+            enable_memory = config.agent.enable_memory
+        if memory_dir is None:
+            memory_dir = config.agent.memory_dir
+        if max_concurrent_per_key is None:
+            max_concurrent_per_key = config.api.max_concurrent_per_key
+        if base_url is None:
+            base_url = config.api.base_url
+        
         super().__init__(
             name=name,
             description_en=description_en,
@@ -102,6 +128,7 @@ class MultimodalAgent(BasicAgent):
             model_name=model_name,
             api_keys=api_keys,
             max_concurrent_per_key=max_concurrent_per_key,
+            base_url=base_url,
             parse_json=False,  # Agent needs raw string to detect tool calls
         )
     
@@ -186,15 +213,15 @@ class MultimodalAgent(BasicAgent):
             Final response string, or dict with response and history if return_history=True
         """
         if verbose:
-            logging.info(f"\n{'='*80}")
-            logging.info(f"📝 USER QUERY")
-            logging.info(f"{'='*80}")
-            logging.info(f"Query: {query}")
+            logger.info(f"\n{'='*80}")
+            logger.info(f"📝 USER QUERY")
+            logger.info(f"{'='*80}")
+            logger.info(f"Query: {query}")
             if images:
-                logging.info(f"Images: {len(images)} image(s)")
+                logger.info(f"Images: {len(images)} image(s)")
             if videos:
-                logging.info(f"Videos: {len(videos)} video(s)")
-            logging.info(f"{'='*80}\n")
+                logger.info(f"Videos: {len(videos)} video(s)")
+            logger.info(f"{'='*80}\n")
         
         # Initialize memory if enabled
         memory = None
@@ -205,7 +232,7 @@ class MultimodalAgent(BasicAgent):
             task_id = memory.start_task(query)
             
             if verbose:
-                logging.info(f"💾 Memory enabled: Task ID = {task_id}\n")
+                logger.info(f"💾 Memory enabled: Task ID = {task_id}\n")
             
             # Register inputs
             if images:
@@ -264,32 +291,32 @@ class MultimodalAgent(BasicAgent):
         
         for iteration in range(self.max_iterations):
             if verbose:
-                logging.info(f"\n{'─'*80}")
-                logging.info(f"🔄 ITERATION {iteration + 1}")
-                logging.info(f"{'─'*80}")
+                logger.info(f"\n{'─'*80}")
+                logger.info(f"🔄 ITERATION {iteration + 1}")
+                logger.info(f"{'─'*80}")
             
             # Call LLM
             try:
                 if verbose:
-                    logging.info(f"\n📥 INPUT TO LLM:")
+                    logger.info(f"\n📥 INPUT TO LLM:")
                     # Show conversation context (without system)
                     for idx, msg in enumerate(conversation_context, 1):
                         if msg.get("type") == "text":
                             text = msg.get("text", "")
                             preview = text[:300] + "..." if len(text) > 300 else text
-                            logging.info(f"   [{idx}] {preview}")
+                            logger.info(f"   [{idx}] {preview}")
                         else:
-                            logging.info(f"   [{idx}] [multimodal: {msg.get('type')}]")
+                            logger.info(f"   [{idx}] [multimodal: {msg.get('type')}]")
                 
                 response = await self._call_llm(system_prompt, conversation_context)
                 
                 if verbose:
-                    logging.info(f"\n📤 LLM RESPONSE:")
-                    logging.info(f"{response}")
+                    logger.info(f"\n📤 LLM RESPONSE:")
+                    logger.info(f"{response}")
                     
             except Exception as e:
                 error_msg = f"Error calling LLM: {str(e)}"
-                logging.error(error_msg)
+                logger.error(error_msg)
                 if return_history:
                     return {
                         "response": error_msg,
@@ -298,38 +325,31 @@ class MultimodalAgent(BasicAgent):
                     }
                 return error_msg
             
-            # Detect tool call
             has_tool, tool_name, tool_args, thought = self._detect_tool(response)
             
             if has_tool:
-                # Log thinking to memory
                 if memory and thought:
                     memory.log_think(thought, self.special_think_token)
                 
-                # Parse original properties (for trace)
                 original_properties = None
                 resolved_args_str = tool_args
                 
-                # Resolve IDs to file paths before calling tool
                 if memory:
                     try:
                         tool_args_dict = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
-                        original_properties = tool_args_dict.copy()  # Save original for trace
+                        original_properties = tool_args_dict.copy()
                         resolved_args = memory.resolve_ids(tool_args_dict)
                         resolved_args_str = json.dumps(resolved_args)
-                    except:
-                        pass  # If parsing fails, use original args
+                    except (json.JSONDecodeError, KeyError, TypeError) as e:
+                        logger.debug(f"Failed to resolve IDs in tool args: {e}")
+                        pass
                 
-                # Execute tool with resolved paths
                 tool_result = self._call_tool(tool_name, resolved_args_str)
                 
-                # Handle different return types
                 if isinstance(tool_result, dict):
-                    # Tool returned dict
                     output_image = tool_result.get("output_image")
                     output_video = tool_result.get("output_video")
                     
-                    # Determine output type and object
                     if output_image:
                         output_object = output_image
                         output_type = "img"
@@ -340,16 +360,12 @@ class MultimodalAgent(BasicAgent):
                         output_object = None
                         output_type = None
                     
-                    # Filter out multimodal fields
                     observation_data = {k: v for k, v in tool_result.items() 
                                        if k not in ["output_image", "output_video"]}
                     
                     if output_object:
-                        # Has multimodal output - will be formatted later with memory description
                         observation = None
                     else:
-                        # Pure data tool - format observation now
-                        # Convert file paths back to IDs for cleaner LLM context
                         if memory:
                             observation_data = memory.resolve_paths_to_ids(observation_data)
                         observation = self._format_observation(observation_data, tool_name)
@@ -375,10 +391,10 @@ class MultimodalAgent(BasicAgent):
                         observation_data = None
                 
                 if verbose:
-                    logging.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
-                    logging.info(f"   Input: {tool_args}")
+                    logger.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
+                    logger.info(f"   Input: {tool_args}")
                     obs_preview = str(observation)[:500] + "..." if len(str(observation)) > 500 else str(observation)
-                    logging.info(f"   Output: {obs_preview}")
+                    logger.info(f"   Output: {obs_preview}")
                 
                 # Log action to memory
                 if memory:
@@ -389,34 +405,39 @@ class MultimodalAgent(BasicAgent):
                         )
                         
                         if output_object and output_type:
-                            # Has multimodal output - let memory handle it and get description
+                            # Generate description before logging
+                            from tool.base_tool import TOOL_REGISTRY
+                            tool_instance = TOOL_REGISTRY.get(tool_name)
+                            if tool_instance:
+                                description = tool_instance().generate_description(
+                                    properties, 
+                                    observation_data if isinstance(observation_data, dict) else {}
+                                )
+                            else:
+                                description = f"{tool_name} output"
+                            
+                            # Log action with pre-generated description
                             output_id = memory.log_action(
                                 tool=tool_name,
                                 properties=properties,
                                 observation=observation_data or {},
-                                output_object=output_object,  # PIL.Image or file path
-                                output_type=output_type
+                                output_object=output_object,
+                                output_type=output_type,
+                                description=description
                             )
-                            # Use Memory's generated description for LLM context
+                            
+                            # Format observation for LLM
                             if output_id:
-                                # Get the description from memory trace
-                                last_trace = memory.trace_data["trace"][-1]
-                                description = last_trace["observation"].get("description", "")
+                                obs_parts = [f"Saved as {output_id}: {description}"]
                                 
-                                if description:
-                                    # Combine description with any additional data fields
-                                    obs_parts = [f"Saved as {output_id}: {description}"]
-                                    
-                                    # Add non-multimodal data if present (e.g., regions, similarity)
-                                    if observation_data:
-                                        # Format additional data
-                                        formatted_data = self._format_observation(observation_data, tool_name)
-                                        obs_parts.append(formatted_data)
-                                    
-                                    observation = ". ".join(obs_parts) if len(obs_parts) > 1 else obs_parts[0]
-                                else:
-                                    # Fallback to simple format
-                                    observation = f"Output Saved as {output_id}"
+                                # Add non-multimodal data if present (e.g., regions, similarity)
+                                if observation_data:
+                                    formatted_data = self._format_observation(observation_data, tool_name)
+                                    obs_parts.append(formatted_data)
+                                
+                                observation = ". ".join(obs_parts) if len(obs_parts) > 1 else obs_parts[0]
+                            else:
+                                observation = f"Output Saved"
                         else:
                             # No multimodal output - observation already formatted
                             memory.log_action(
@@ -426,7 +447,7 @@ class MultimodalAgent(BasicAgent):
                             )
                     except Exception as e:
                         if verbose:
-                            logging.warning(f"Failed to log action to memory: {e}")
+                            logger.warning(f"Failed to log action to memory: {e}")
                 
                 # Record history
                 history.append({
@@ -437,8 +458,6 @@ class MultimodalAgent(BasicAgent):
                     "observation": observation,
                 })
                 
-                # Update conversation context with observation
-                # Add the thought, action, and observation to context
                 context_text = f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
                 conversation_context.append({
                     "type": "text",
@@ -446,12 +465,11 @@ class MultimodalAgent(BasicAgent):
                 })
                 
             else:
-                # No tool call, agent finished
                 if memory:
                     memory.log_answer(response)
                     memory.end_task(success=True)
                     if verbose:
-                        logging.info(f"💾 Saved trace to: {memory.task_dir}/trace.json")
+                        logger.info(f"💾 Saved trace to: {memory.task_dir}/trace.json")
                 
                 history.append({
                     "iteration": iteration + 1,
@@ -459,9 +477,9 @@ class MultimodalAgent(BasicAgent):
                 })
                 
                 if verbose:
-                    logging.info(f"\n{'='*80}")
-                    logging.info("✅ TASK COMPLETED!")
-                    logging.info(f"{'='*80}")
+                    logger.info(f"\n{'='*80}")
+                    logger.info("✅ TASK COMPLETED!")
+                    logger.info(f"{'='*80}")
                 
                 result = {
                     "response": response,
@@ -475,14 +493,13 @@ class MultimodalAgent(BasicAgent):
                     return result
                 return response
         
-        # Max iterations reached
         final_msg = "Maximum iterations reached without completing the task."
-        logging.warning(final_msg)
+        logger.warning(final_msg)
         
         if memory:
             memory.end_task(success=False)
             if verbose:
-                logging.info(f"💾 Saved incomplete trace to: {memory.task_dir}/trace.json")
+                logger.info(f"💾 Saved incomplete trace to: {memory.task_dir}/trace.json")
         
         result = {
             "response": final_msg,

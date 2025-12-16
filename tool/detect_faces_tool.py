@@ -29,7 +29,7 @@ class DetectFacesTool(ModelBasedTool):
         },
         "required": ["image"]
     }
-    example = '{"image": "image-0"}'
+    example = '{"image": "img_0"}'
     
     def load_model(self, device: str) -> None:
         import face_detection
@@ -132,4 +132,9 @@ class DetectFacesTool(ModelBasedTool):
             return {"error": f"Image file not found: {str(e)}"}
         except Exception as e:
             return {"error": f"Error detecting faces: {str(e)}"}
+    
+    def generate_description(self, properties, observation):
+        """Generate description for face detection."""
+        img = properties.get("image", "image")
+        return f"Detected faces in {img}"
 

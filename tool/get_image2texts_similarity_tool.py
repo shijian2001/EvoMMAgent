@@ -33,7 +33,7 @@ class GetImageToTextsSimilarityTool(ModelBasedTool):
         },
         "required": ["image", "texts"]
     }
-    example = '{"image": "image-0", "texts": ["a cat", "a dog"]}'
+    example = '{"image": "img_0", "texts": ["a cat", "a dog"]}'
     
     def load_model(self, device: str) -> None:
         import open_clip

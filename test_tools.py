@@ -31,8 +31,8 @@ def save_multimodal_output(result, tool_name: str):
     if isinstance(result, str):
         try:
             result = json.loads(result)
-        except:
-            return result
+        except json.JSONDecodeError:
+            return result  # Return as string if not JSON
     
     if not isinstance(result, dict):
         return result

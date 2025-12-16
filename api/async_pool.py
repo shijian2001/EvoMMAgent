@@ -19,6 +19,7 @@ class APIPool:
             model_name: str,
             api_keys: List[str],
             max_concurrent_per_key: int = 300,
+            base_url: str = "http://redservingapi.devops.xiaohongshu.com/v1",
             parse_json: bool = False,
     ):
         """
@@ -28,13 +29,14 @@ class APIPool:
             model_name: Name of the model to use
             api_keys: List of API keys to use
             max_concurrent_per_key: Maximum number of concurrent requests per API key
+            base_url: Base URL for API endpoint
             parse_json: Whether to automatically parse JSON responses (default: False for Agent compatibility)
         """
         if not api_keys:
             raise ValueError("At least one API key is required")
 
         self.api_instances = [
-            QAWrapper(model_name, api_key, parse_json=parse_json)
+            QAWrapper(model_name, api_key, base_url=base_url, parse_json=parse_json)
             for api_key in api_keys
         ]
 
@@ -47,7 +49,7 @@ class APIPool:
             asyncio.Semaphore(max_concurrent_per_key)
             for _ in range(len(self.api_instances))
         ]
-
+        
         self.stats = {
             "total_calls": 0,
             "total_errors": 0,
@@ -55,8 +57,7 @@ class APIPool:
             "api_instances": len(self.api_instances),
             "api_distribution": [0] * len(self.api_instances)
         }
-
-        # Lock for updating stats
+        
         self.stats_lock = asyncio.Lock()
 
         logger.info(f"Initialized API pool with {len(api_keys)} API keys, "
@@ -106,7 +107,6 @@ class APIPool:
                 async with self.stats_lock:
                     self.stats["total_errors"] += 1
 
-                # Re-raise the exception
                 raise
 
             finally:

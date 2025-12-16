@@ -31,7 +31,7 @@ class OCRTool(ModelBasedTool):
         },
         "required": ["image"]
     }
-    example = '{"image": "image-0"}'
+    example = '{"image": "img_0"}'
     
     def load_model(self, device: str) -> None:
         import easyocr

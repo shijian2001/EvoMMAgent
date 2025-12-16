@@ -72,3 +72,10 @@ class ZoomInTool(BasicTool):
         
         # Return dict with PIL Image object
         return {"output_image": zoomed}
+    
+    def generate_description(self, properties, observation):
+        """Generate description for zoomed image."""
+        img = properties.get("image", "image")
+        bbox = properties.get("bbox", [])
+        factor = properties.get("factor", 2)
+        return f"Zoomed in {img} at bbox {bbox} by {factor}x"

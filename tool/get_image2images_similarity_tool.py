@@ -33,7 +33,7 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
         },
         "required": ["image", "other_images"]
     }
-    example = '{"image": "image-0", "other_images": ["image-1", "image-2"]}'
+    example = '{"image": "img_0", "other_images": ["img_1", "img_2"]}'
     
     def load_model(self, device: str) -> None:
         import open_clip

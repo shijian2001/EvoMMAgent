@@ -42,7 +42,7 @@ class EstimateRegionDepthTool(ModelBasedTool):
         },
         "required": ["image", "bbox"]
     }
-    example = '{"image": "image-0", "bbox": [0.1, 0.2, 0.5, 0.6], "mode": "mean"}'
+    example = '{"image": "img_0", "bbox": [0.1, 0.2, 0.5, 0.6], "mode": "mean"}'
     
     def load_model(self, device: str) -> None:
         from transformers import AutoImageProcessor, AutoModelForDepthEstimation

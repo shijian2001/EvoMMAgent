@@ -23,7 +23,7 @@ class LocalizeObjectsTool(ModelBasedTool):
         },
         "required": ["image", "objects"]
     }
-    example = '{"image": "image-0", "objects": ["dog", "cat"]}'
+    example = '{"image": "img_0", "objects": ["dog", "cat"]}'
 
     def load_model(self, device: str) -> None:
         from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
@@ -69,7 +69,7 @@ class LocalizeObjectsTool(ModelBasedTool):
                     "bbox": bbox,
                     "score": round(score.item(), 4)
                 })
-            # 可视化
+            
             visualize_tool = VisualizeRegionsOnImageTool()
             visualize_params = {
                 "image_path": image_path_full,
@@ -86,4 +86,14 @@ class LocalizeObjectsTool(ModelBasedTool):
             return {"error": f"Image file not found: {str(e)}"}
         except Exception as e:
             return {"error": f"Error localizing objects: {str(e)}"}
+    
+    def generate_description(self, properties, observation):
+        """Generate description for localized objects."""
+        img = properties.get("image", "image")
+        objects = properties.get("objects", [])
+        if isinstance(objects, list):
+            objects_str = ", ".join(objects) if objects else "objects"
+        else:
+            objects_str = str(objects)
+        return f"Localized {objects_str} in {img}"
 

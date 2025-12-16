@@ -3,9 +3,12 @@
 import os
 import json
 import shutil
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 from threading import Lock
+
+logger = logging.getLogger(__name__)
 
 
 class Memory:
@@ -15,33 +18,35 @@ class Memory:
     _task_counter = 0
     _counter_lock = Lock()
     
-    def __init__(self, base_dir: str = "memory"):
+    def __init__(self, base_dir: Optional[str] = None):
         """Initialize memory manager.
         
         Args:
-            base_dir: Base directory for memory storage
+            base_dir: Base directory for memory storage (uses config default if None)
         """
+        if base_dir is None:
+            try:
+                from config import Config
+                base_dir = Config.default().agent.memory_dir
+            except (ImportError, AttributeError):
+                base_dir = "memory"
+        
         self.base_dir = base_dir
         self.tasks_dir = os.path.join(base_dir, "tasks")
         os.makedirs(self.tasks_dir, exist_ok=True)
         
-        # Initialize counter from existing tasks (only once)
         self._initialize_counter_from_disk()
         
-        # Current task state
         self.task_id = None
         self.task_dir = None
         self.trace_data = None
         self.ref_counters = {"img": 0, "vid": 0}
-        
-        # Path to ID mapping for fast lookup
         self._path_to_id = {}
     
     def _initialize_counter_from_disk(self):
         """Initialize task counter from existing task directories."""
         with Memory._counter_lock:
             if Memory._task_counter == 0:
-                # Check existing task directories
                 if os.path.exists(self.tasks_dir):
                     existing = [d for d in os.listdir(self.tasks_dir) 
                                if os.path.isdir(os.path.join(self.tasks_dir, d)) and d.isdigit()]
@@ -77,8 +82,6 @@ class Memory:
             "trace": []
         }
         self.ref_counters = {"img": 0, "vid": 0}
-        
-        # Clear path-to-id mapping for new task
         self._path_to_id = {}
         
         return self.task_id
@@ -96,16 +99,13 @@ class Memory:
         id_str = f"{modality}_{self.ref_counters[modality]}"
         self.ref_counters[modality] += 1
         
-        # Copy file to task dir with id as name
         ext = os.path.splitext(file_path)[1]
         dst_path = os.path.join(self.task_dir, f"{id_str}{ext}")
         shutil.copy2(file_path, dst_path)
         
-        # Record path-to-id mapping (both original and task_dir paths)
-        self._path_to_id[file_path] = id_str  # Original path
-        self._path_to_id[dst_path] = id_str   # Task dir path
+        self._path_to_id[file_path] = id_str
+        self._path_to_id[dst_path] = id_str
         
-        # Add to input dict with original path
         modality_map = {"img": "images", "vid": "videos"}
         modality_key = modality_map.get(modality, f"{modality}s")
         if modality_key not in self.trace_data["input"]:
@@ -125,7 +125,6 @@ class Memory:
             content: Thought content
             special_think_token: Special token to remove (default "Thought:")
         """
-        # Clean up content: remove special_think_token prefix and strip
         content = content.strip()
         if content.startswith(special_think_token):
             content = content[len(special_think_token):].strip()
@@ -143,7 +142,8 @@ class Memory:
         properties: Dict[str, Any],
         observation: Union[str, Dict[str, Any]],
         output_object: Optional[Any] = None,
-        output_type: str = "img"
+        output_type: str = "img",
+        description: Optional[str] = None
     ) -> Optional[str]:
         """Log an action step.
         
@@ -153,6 +153,7 @@ class Memory:
             observation: Tool output - string if no multimodal output, dict with tool data otherwise
             output_object: Optional multimodal object (PIL.Image, video path, etc.)
             output_type: Type of output (img, vid)
+            description: Optional pre-generated description for multimodal output
             
         Returns:
             output_id: Reference ID of output if created, else None
@@ -170,10 +171,13 @@ class Memory:
             self._save_output_object(output_object, output_id, modality)
             
             # Build observation dict with id and description
+            if description is None:
+                description = f"{tool} output"
+            
             observation_dict = {
                 "id": output_id,
                 "type": modality,
-                "description": self._generate_description(tool, properties, observation)
+                "description": description
             }
             
             # Add any additional data from original observation
@@ -347,65 +351,3 @@ class Memory:
             return value
         
         return resolve(data)
-    
-    def _generate_description(
-        self, 
-        tool: str, 
-        properties: Dict[str, Any],
-        observation: Union[str, Dict[str, Any]]
-    ) -> str:
-        """Generate description from template rules.
-        
-        Args:
-            tool: Tool name
-            properties: Tool input parameters
-            observation: Tool output data
-            
-        Returns:
-            description: Human-readable description
-        """
-        observation_data = observation if isinstance(observation, dict) else {}
-        
-        rules = {
-            "segment": lambda p, o: (
-                f"Segmentation of {p.get('image')} "
-                f"with {len(o.get('bboxes', []))} objects"
-            ),
-            "crop": lambda p, o: (
-                f"Cropped {p.get('image')} at bbox {p.get('bbox')}"
-            ),
-            "zoom_in": lambda p, o: (
-                f"Zoomed {p.get('image')} at {p.get('bbox')} "
-                f"by {p.get('factor', 2)}x"
-            ),
-            "ocr": lambda p, o: (
-                f"OCR from {p.get('image')}"
-            ),
-            "get_objects": lambda p, o: (
-                f"Objects detected in {p.get('image')}"
-            ),
-            "localize_objects": lambda p, o: (
-                f"Localized '{p.get('query')}' in {p.get('image')}"
-            ),
-            "estimate_depth": lambda p, o: (
-                f"Depth estimation of {p.get('image')}"
-            ),
-            "estimate_region_depth": lambda p, o: (
-                f"Depth estimation of {p.get('image')} at {p.get('bbox')}"
-            ),
-            "detect_faces": lambda p, o: (
-                f"Face detection in {p.get('image')}"
-            ),
-            "visualize_regions": lambda p, o: (
-                f"Visualized regions in {p.get('image')}"
-            ),
-            "calculator": lambda p, o: (
-                f"Calculated: {p.get('expression')}"
-            ),
-        }
-        
-        rule_fn = rules.get(tool, lambda p, o: f"{tool} output")
-        try:
-            return rule_fn(properties, observation_data)
-        except Exception:
-            return f"{tool} output"

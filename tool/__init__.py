@@ -24,8 +24,4 @@ __all__ = [
     "ModelBasedTool", 
     "TOOL_REGISTRY",
     "register_tool",
-    "get_free_gpu",
-    "acquire_gpu",
-    "release_gpu",
-    "get_gpu_status",
 ]
