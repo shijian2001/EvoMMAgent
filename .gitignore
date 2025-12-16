@@ -64,3 +64,5 @@ envs/
 
 # Deprecated code
 api_deprecated/
+
+tool_models/
