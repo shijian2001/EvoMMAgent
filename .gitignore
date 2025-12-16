@@ -66,3 +66,4 @@ envs/
 api_deprecated/
 
 tool_models/
+test_outputs/
