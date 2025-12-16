@@ -44,7 +44,7 @@ dependencies = [
     "torch==2.4.1",
     "face-detection==0.2.2",
     "accelerate>=1.12.0",
-    "recognize-anything @ git+https://github.com/xinyu1205/recognize-anything.git",
+    "ram @ git+https://github.com/xinyu1205/recognize-anything.git",
 ]
 
 [project.optional-dependencies]
