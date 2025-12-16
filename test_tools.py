@@ -20,7 +20,7 @@ OUTPUT_DIR = Path("test_outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Initialize Memory system
-memory = Memory(memory_dir=str(OUTPUT_DIR))
+memory = Memory(base_dir=str(OUTPUT_DIR))
 memory.start_task("test_tools")
 
 
