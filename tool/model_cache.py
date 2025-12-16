@@ -7,12 +7,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Model cache with reference counting
+# Structure: {cache_key: {"objects": {...}, "ref_count": int}}
 _model_cache: Dict[str, Dict[str, Any]] = {}
 _cache_lock = Lock()
 
 
-def get_cached_model(model_id: str, device: Optional[str] = None) -> Tuple[Optional[Any], Optional[str]]:
-    """Get cached model if available, increment ref count."""
+def get_cached_objects(model_id: str, device: Optional[str] = None) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Get all cached objects (model, processor, etc.) if available, increment ref count.
+    
+    Returns:
+        Tuple of (objects_dict, device) where objects_dict contains all cached components
+    """
     with _cache_lock:
         if device:
             cache_key = f"{model_id}:{device}"
@@ -20,26 +25,54 @@ def get_cached_model(model_id: str, device: Optional[str] = None) -> Tuple[Optio
                 entry = _model_cache[cache_key]
                 entry["ref_count"] += 1
                 logger.info(f'✓ Reusing {model_id} on {device} (refs: {entry["ref_count"]})')
-                return entry["model"], device
+                return entry["objects"], device
         else:
             for cache_key, entry in _model_cache.items():
                 if cache_key.startswith(f"{model_id}:"):
                     cached_device = cache_key.split(":", 1)[1]
                     entry["ref_count"] += 1
                     logger.info(f'✓ Reusing {model_id} on {cached_device} (refs: {entry["ref_count"]})')
-                    return entry["model"], cached_device
+                    return entry["objects"], cached_device
         return None, None
 
 
-def cache_model(model_id: str, device: str, model: Any, tool_name: str = "unknown") -> None:
-    """Cache a model for sharing."""
+def get_cached_model(model_id: str, device: Optional[str] = None) -> Tuple[Optional[Any], Optional[str]]:
+    """Get cached model if available, increment ref count.
+    
+    Legacy function for backward compatibility. Use get_cached_objects for full support.
+    """
+    objects, device = get_cached_objects(model_id, device)
+    if objects is not None:
+        return objects.get("model"), device
+    return None, None
+
+
+def cache_objects(model_id: str, device: str, objects: Dict[str, Any], tool_name: str = "unknown") -> None:
+    """Cache multiple objects (model, processor, etc.) for sharing.
+    
+    Args:
+        model_id: Unique identifier for the model
+        device: Device where model is loaded
+        objects: Dict of objects to cache, e.g. {"model": model, "processor": processor}
+        tool_name: Name of the tool caching these objects
+    """
     cache_key = f"{model_id}:{device}"
     with _cache_lock:
         if cache_key not in _model_cache:
-            logger.info(f'Caching {model_id} on {device}')
-            _model_cache[cache_key] = {"model": model, "ref_count": 1}
+            logger.info(f'Caching {model_id} on {device} (objects: {list(objects.keys())})')
+            _model_cache[cache_key] = {"objects": objects, "ref_count": 1}
         else:
+            # Update existing cache with new objects
+            _model_cache[cache_key]["objects"].update(objects)
             _model_cache[cache_key]["ref_count"] += 1
+
+
+def cache_model(model_id: str, device: str, model: Any, tool_name: str = "unknown") -> None:
+    """Cache a model for sharing.
+    
+    Legacy function for backward compatibility. Use cache_objects for full support.
+    """
+    cache_objects(model_id, device, {"model": model}, tool_name)
 
 
 def release_model(model_id: str, device: str, tool_name: str = "unknown") -> None:
@@ -56,7 +89,9 @@ def release_model(model_id: str, device: str, tool_name: str = "unknown") -> Non
         if entry["ref_count"] <= 0:
             logger.info(f'Unloading {model_id} from {device}')
             try:
-                del entry["model"]
+                # Clean up all cached objects
+                if "objects" in entry:
+                    entry["objects"].clear()
                 import torch
                 if device.startswith("cuda"):
                     torch.cuda.empty_cache()
@@ -68,7 +103,10 @@ def release_model(model_id: str, device: str, tool_name: str = "unknown") -> Non
 
 
 def preload_tools(tool_bank: Optional[List[str]] = None, devices: Optional[List[str]] = None) -> Dict[str, str]:
-    """Preload models for tools, distribute across GPUs."""
+    """Preload models for tools, distribute across GPUs.
+    
+    Now caches all model-related objects (model, processor, image_processor, etc.)
+    """
     from tool.base_tool import TOOL_REGISTRY
     
     if tool_bank is None:
@@ -104,9 +142,24 @@ def preload_tools(tool_bank: Optional[List[str]] = None, devices: Optional[List[
             temp_tool = tool_cls()
             temp_tool.load_model(device)
             if temp_tool.is_loaded and temp_tool.model is not None:
-                cache_model(model_id, device, temp_tool.model, tool_name="preload")
+                # Cache all model-related objects
+                objects_to_cache = {"model": temp_tool.model}
+                
+                # Add processor if exists
+                if hasattr(temp_tool, 'processor') and temp_tool.processor is not None:
+                    objects_to_cache["processor"] = temp_tool.processor
+                
+                # Add image_processor if exists
+                if hasattr(temp_tool, 'image_processor') and temp_tool.image_processor is not None:
+                    objects_to_cache["image_processor"] = temp_tool.image_processor
+                
+                # Add tokenizer if exists
+                if hasattr(temp_tool, 'tokenizer') and temp_tool.tokenizer is not None:
+                    objects_to_cache["tokenizer"] = temp_tool.tokenizer
+                
+                cache_objects(model_id, device, objects_to_cache, tool_name="preload")
                 model_device_map[model_id] = device
-                logger.info(f"  ✓ {model_id:20s} -> {device}")
+                logger.info(f"  ✓ {model_id:20s} -> {device} (cached: {list(objects_to_cache.keys())})")
             else:
                 logger.error(f"  ✗ {model_id:20s} -> {device}")
         except Exception as e:

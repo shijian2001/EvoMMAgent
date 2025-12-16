@@ -126,23 +126,52 @@ class ModelBasedTool(BasicTool):
         if not self.model_id:
             raise ValueError(f"Tool {self.name} must set 'model_id'")
             
-        from tool.model_cache import get_cached_model, cache_model
+        from tool.model_cache import get_cached_objects, cache_objects
         
-        cached_model, cached_device = get_cached_model(self.model_id, device)
-        if cached_model is not None:
-            self.model = cached_model
+        # Try to get all cached objects
+        cached_objects, cached_device = get_cached_objects(self.model_id, device)
+        if cached_objects is not None:
+            # Restore all cached objects
+            self.model = cached_objects.get("model")
             self.device = cached_device
             self.is_loaded = True
+            
+            # Restore processor if cached
+            if "processor" in cached_objects:
+                self.processor = cached_objects["processor"]
+            
+            # Restore image_processor if cached
+            if "image_processor" in cached_objects:
+                self.image_processor = cached_objects["image_processor"]
+            
+            # Restore tokenizer if cached
+            if "tokenizer" in cached_objects:
+                self.tokenizer = cached_objects["tokenizer"]
         else:
+            # No cache, load from scratch
             if device is None:
                 try:
                     import torch
                     device = "cuda:0" if torch.cuda.is_available() else "cpu"
                 except (ImportError, RuntimeError):
                     device = "cpu"
+            
             self.load_model(device)
+            
             if self.is_loaded and self.model is not None:
-                cache_model(self.model_id, self.device, self.model, self.name)
+                # Cache all model-related objects
+                objects_to_cache = {"model": self.model}
+                
+                if hasattr(self, 'processor') and self.processor is not None:
+                    objects_to_cache["processor"] = self.processor
+                
+                if hasattr(self, 'image_processor') and self.image_processor is not None:
+                    objects_to_cache["image_processor"] = self.image_processor
+                
+                if hasattr(self, 'tokenizer') and self.tokenizer is not None:
+                    objects_to_cache["tokenizer"] = self.tokenizer
+                
+                cache_objects(self.model_id, self.device, objects_to_cache, self.name)
 
     def call(self, params: Union[str, Dict]) -> Any:
         self.ensure_loaded()
