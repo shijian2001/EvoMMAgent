@@ -48,7 +48,7 @@ if "output_image" in result:
 ### 方式 3: 手动预加载
 
 ```python
-from tool.model_config import preload_tools
+from tool.model_cache import preload_tools
 
 # 预加载指定工具到指定 GPU
 preload_tools(

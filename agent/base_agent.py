@@ -58,7 +58,7 @@ class BasicAgent(ABC):
         
         # Preload tool models before initializing tools
         if tool_bank:
-            from tool.model_config import preload_tools
+            from tool.model_cache import preload_tools
             tool_names = [t if isinstance(t, str) else t.get("name") for t in tool_bank]
             preload_tools(tool_bank=tool_names, devices=preload_devices)
             

@@ -9,7 +9,7 @@ from tool import TOOL_REGISTRY
 print(f"Registered tools: {list(TOOL_REGISTRY.keys())}\n")
 
 # Optional: preload models to avoid first-call latency
-# from tool.model_config import preload_tools
+# from tool.model_cache import preload_tools
 # preload_tools(tool_bank=["estimate_region_depth", "estimate_object_depth"])
 
 IMG = "test_image.png"

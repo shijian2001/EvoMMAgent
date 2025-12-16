@@ -96,7 +96,7 @@ class ModelBasedTool(BasicTool):
     def unload_model(self) -> None:
         """Release model reference."""
         if self.is_loaded and self.model_id:
-            from tool.model_config import release_model
+            from tool.model_cache import release_model
             release_model(self.model_id, self.device, tool_name=self.name)
             self.is_loaded = False
             self.device = "cpu"
@@ -108,7 +108,7 @@ class ModelBasedTool(BasicTool):
         if not self.model_id:
             raise ValueError(f"Tool {self.name} must set 'model_id'")
             
-        from tool.model_config import get_cached_model, cache_model
+        from tool.model_cache import get_cached_model, cache_model
         
         cached_model, cached_device = get_cached_model(self.model_id, device)
         if cached_model is not None:
