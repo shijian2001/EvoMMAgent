@@ -9,9 +9,9 @@ from tool import TOOL_REGISTRY
 print(f"Registered tools: {list(TOOL_REGISTRY.keys())}\n")
 
 # Optional: preload models to avoid first-call latency
-from tool.model_cache import preload_tools
-preload_tools(tool_bank=["zoom_in", "get_objects", "estimate_region_depth", "estimate_object_depth"])
-print("preload success")
+# from tool.model_cache import preload_tools
+# preload_tools(tool_bank=["zoom_in", "localize_objects", "estimate_region_depth", "estimate_object_depth"])
+# print("preload success")
 
 IMG = "test_image.png"
 # IMG2 = "test_image2.png"
@@ -101,13 +101,13 @@ async def test():
     # print(f"solve_math_equation: {r}")
 
     # get_objects
-    r = await TOOL_REGISTRY["get_objects"]().call_async({"image": IMG})
-    print(f"get_objects: {r}")
+    # r = await TOOL_REGISTRY["get_objects"]().call_async({"image": IMG})
+    # print(f"get_objects: {r}")
 
     # localize_objects
-    # r = await TOOL_REGISTRY["localize_objects"]().call_async({"image": IMG, "objects": ["bread", "orange"]})
-    # r = save_multimodal_output(r, "localize_objects")
-    # print(f"localize_objects: {r}")
+    r = await TOOL_REGISTRY["localize_objects"]().call_async({"image": IMG, "objects": ["bread", "orange"]})
+    r = save_multimodal_output(r, "localize_objects")
+    print(f"localize_objects: {r}")
 
     # detect_faces
     # r = await TOOL_REGISTRY["detect_faces"]().call_async({"image": IMG})
