@@ -43,20 +43,24 @@ class SolveMathEquationTool(BasicTool):
             else:
                 self.client = None
     
-    def call(self, params: Union[str, Dict]) -> str:
+    def call(self, params: Union[str, Dict]) -> Dict:
         """Execute the equation solving operation.
         
         Args:
             params: Parameters containing the query
             
         Returns:
-            Solution or error message
+            Dict with success status and solution or error
         """
         if not WOLFRAM_AVAILABLE:
-            return "Error: wolframalpha package is not installed. Please install it with: pip install wolframalpha"
+            return {
+                "error": "wolframalpha package is not installed. Please install it with: pip install wolframalpha"
+            }
         
         if self.client is None:
-            return "Error: WOLFRAM_ALPHA_API_KEY environment variable is not set. Please set it to use this tool."
+            return {
+                "error": "WOLFRAM_ALPHA_API_KEY environment variable is not set. Please set it to use this tool."
+            }
         
         # Validate and parse parameters
         params_dict = self.parse_params(params)
@@ -66,7 +70,9 @@ class SolveMathEquationTool(BasicTool):
             res = self.client.query(query)
             
             if not res.get("@success", False):
-                return "Error: Your Wolfram query is invalid. Please try a different query."
+                return {
+                    "error": "Your Wolfram query is invalid. Please try a different query."
+                }
             
             # Try to extract the solution
             answer = ""
@@ -96,10 +102,10 @@ class SolveMathEquationTool(BasicTool):
                     pass
             
             if not answer or answer == "":
-                return "Error: No solution found by Wolfram Alpha for this query."
+                return {"error": "No solution found by Wolfram Alpha for this query."}
             
-            return f"Solution: {answer.strip()}"
+            return {"solution": answer.strip()}
             
         except Exception as e:
-            return f"Error querying Wolfram Alpha: {str(e)}"
+            return {"error": f"Error querying Wolfram Alpha: {str(e)}"}
 

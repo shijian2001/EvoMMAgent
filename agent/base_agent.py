@@ -32,6 +32,7 @@ class BasicAgent(ABC):
             special_args_token: str = "\nAction Input:",
             special_obs_token: str = "\nObservation:",
             special_think_token: str = "Thought:",
+            preload_devices: Optional[List[str]] = None,
     ):
         """Initialize the agent with tools and configuration.
         
@@ -48,14 +49,22 @@ class BasicAgent(ABC):
             special_args_token: Token to mark action input
             special_obs_token: Token to mark observations
             special_think_token: Token to mark thinking/reasoning section
+            preload_devices: Devices for preloading models, e.g., ["cuda:0", "cuda:1"] (default: auto-detect all GPUs)
         """
         self.name = name
         self.description = description_en if not use_zh else description_zh
 
         self.tool_bank = {}
+        
+        # Preload tool models before initializing tools
         if tool_bank:
+            from tool.model_config import preload_tools
+            tool_names = [t if isinstance(t, str) else t.get("name") for t in tool_bank]
+            preload_tools(tool_bank=tool_names, devices=preload_devices)
+            
             for t in tool_bank:
                 self._init_tool(t)
+
         self.use_zh = use_zh
 
         self.jinja_env = jinja2.Environment(
@@ -107,6 +116,51 @@ class BasicAgent(ABC):
             logger.info(f'Loading {tool_name}...')
             instance.ensure_loaded()
             logger.info(f'{tool_name} loaded on {instance.device}')
+    
+    def _format_observation(self, result: Dict, tool_name: str = "") -> str:
+        """Format tool result dict into human-readable observation.
+        
+        Simple generic logic: "Key: value" with capitalized first letter.
+        Special handling for regions with label and bbox.
+        
+        Args:
+            result: Tool result dict
+            tool_name: Tool name for context (optional)
+            
+        Returns:
+            Formatted observation string
+        """
+        if not result:
+            return "success"
+        
+        # Handle error
+        if "error" in result:
+            return f"Error: {result['error']}"
+        
+        # Generic formatting: "Key: value"
+        parts = []
+        for key, value in result.items():
+            # Capitalize first letter of key
+            formatted_key = key[0].upper() + key[1:] if key else key
+            
+            # Format value
+            if isinstance(value, list):
+                # Special handling for regions (list of dicts with label and bbox)
+                if value and isinstance(value[0], dict) and "label" in value[0] and "bbox" in value[0]:
+                    region_strs = []
+                    for item in value:
+                        label = item["label"]
+                        bbox = item["bbox"]
+                        region_strs.append(f"{label} at {bbox}")
+                    formatted_value = ", ".join(region_strs)
+                else:
+                    formatted_value = str(value)
+            else:
+                formatted_value = str(value)
+            
+            parts.append(f"{formatted_key}: {formatted_value}")
+        
+        return ", ".join(parts)
 
     def _call_tool(
             self,

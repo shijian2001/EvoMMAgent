@@ -13,10 +13,10 @@ class GetImageToTextsSimilarityTool(ModelBasedTool):
     """A tool to compute CLIP similarity between one image and a list of texts."""
     
     name = "get_image2texts_similarity"
-    model_id = "clip"  # Automatic model sharing with other CLIP tools!
+    model_id = "clip"
     
-    description_en = "Get the similarity between one image and a list of texts. Note that this similarity score may not be accurate and should be used as a reference only."
-    description_zh = "计算一个图像与一组文本之间的相似度。注意此相似度分数可能不准确，仅作为参考。"
+    description_en = "Get the similarity between one image and a list of texts."
+    description_zh = "计算一个图像与一组文本之间的相似度。"
     
     parameters = {
         "type": "object",
@@ -29,16 +29,21 @@ class GetImageToTextsSimilarityTool(ModelBasedTool):
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "A list of texts to compare to the reference image"
-            },
-            "tool_version": {
-                "type": "string",
-                "description": "CLIP model version (optional, defaults to ViT-H-14-378-quickgelu)",
-                "default": "ViT-H-14-378-quickgelu"
             }
         },
         "required": ["image", "texts"]
     }
     example = '{"image": "image-0", "texts": ["a cat", "a dog"]}'
+    
+    def load_model(self, device: str) -> None:
+        import open_clip
+        from tool.model_config import CLIP_VERSION, CLIP_PRETRAINED
+        self.model, _, self.preprocess = open_clip.create_model_and_transforms(CLIP_VERSION, pretrained=CLIP_PRETRAINED)
+        self.model.eval()
+        self.model = self.model.to(device)
+        self.tokenizer = open_clip.get_tokenizer(CLIP_VERSION)
+        self.device = device
+        self.is_loaded = True
     
     def _call_impl(self, params: Union[str, Dict]) -> str:
         """Execute the image-to-text similarity computation operation.
@@ -55,10 +60,9 @@ class GetImageToTextsSimilarityTool(ModelBasedTool):
         texts = params_dict["texts"]
         
         if not isinstance(texts, list) or len(texts) == 0:
-            return json.dumps({
-                "success": False,
+            return {
                 "error": "texts must be a non-empty list of strings"
-            })
+            }
         
         try:
             # Process reference image
@@ -85,23 +89,14 @@ class GetImageToTextsSimilarityTool(ModelBasedTool):
             
             # Find best match (argmax on the second dimension)
             best_text_index = torch.argmax(similarity_scores, dim=1).item()
-            best_text = texts[best_text_index]
             
-            return json.dumps({
-                "success": True,
-                "similarity": sim_scores,
-                "best_text_index": best_text_index,
-                "best_text": best_text
-            })
+            return {
+                "similarity scores": sim_scores,
+                "best match": texts[best_text_index]
+            }
             
         except FileNotFoundError as e:
-            return json.dumps({
-                "success": False,
-                "error": f"Image file not found: {str(e)}"
-            })
+            return {"error": f"Image file not found: {str(e)}"}
         except Exception as e:
-            return json.dumps({
-                "success": False,
-                "error": f"Error computing image-to-text similarity: {str(e)}"
-            })
+            return {"error": f"Error computing image-to-text similarity: {str(e)}"}
 

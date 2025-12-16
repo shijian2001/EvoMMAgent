@@ -61,18 +61,13 @@ class BasicTool(ABC):
 
 
 class ModelBasedTool(BasicTool):
-    """Base class for model-based tools with automatic model sharing.
+    """Base class for model-based tools with automatic caching and sharing.
     
-    Tools specify a model_id (defined in model_config.py), and the system
-    automatically handles loading, caching, and sharing models across tools.
-    
-    To use:
-        1. Set class attribute: model_id = "clip" or ["clip", "dino"] for multiple models
-        2. Implement load_model_components() to unpack and set model components
-        3. Done! Model sharing is automatic and transparent.
+    Set model_id, implement load_model() to set self.model, implement _call_impl().
     """
     
-    model_id: Optional[Union[str, List[str]]] = None  # Single or multiple model IDs
+    model_id: Optional[str] = None
+    model: Any = None
     device: str = "cpu"
     is_loaded: bool = False
 
@@ -80,97 +75,56 @@ class ModelBasedTool(BasicTool):
         super().__init__(cfg, use_zh)
         self.device = "cpu"
         self.is_loaded = False
-        self._model_ids = []  # Normalized list of model IDs
 
-    def load_model_components(self, model_data: Any, device: str) -> None:
-        """Unpack and set model components automatically.
+    def load_model(self, device: str) -> None:
+        """Load model and set to instance attributes.
         
-        This method is called automatically by ensure_loaded(). It unpacks model
-        components based on the attribute names defined in MODEL_REGISTRY.
+        Override this method to define how to create and set your model.
         
-        You typically don't need to override this unless you have custom requirements.
+        Example:
+            def load_model(self, device):
+                import easyocr
+                self.reader = easyocr.Reader(["en"], gpu=device.startswith("cuda"))
+                self.device = device
+                self.is_loaded = True
         
         Args:
-            model_data: Single model tuple or dict of models (if model_id is list)
-            device: Device the model is loaded on
+            device: Target device (e.g., "cuda:0", "cpu")
         """
-        from tool.model_config import get_model_attrs
-        
-        # Handle multiple models
-        if isinstance(model_data, dict):
-            for mid, data in model_data.items():
-                attrs = get_model_attrs(mid)
-                if isinstance(data, tuple):
-                    for attr, value in zip(attrs, data):
-                        setattr(self, attr, value)
-                else:
-                    setattr(self, attrs[0], data)
-        # Handle single model
-        else:
-            attrs = get_model_attrs(self._model_ids[0])
-            if isinstance(model_data, tuple):
-                for attr, value in zip(attrs, model_data):
-                    setattr(self, attr, value)
-            else:
-                setattr(self, attrs[0], model_data)
-        
-        self.device = device
-        self.is_loaded = True
+        raise NotImplementedError(f"Tool {self.name} must implement load_model()")
 
     def unload_model(self) -> None:
-        """Release model reference (automatic reference counting)."""
-        if self.is_loaded and self._model_ids:
+        """Release model reference."""
+        if self.is_loaded and self.model_id:
             from tool.model_config import release_model
-            for mid in self._model_ids:
-                release_model(mid, self.device, tool_name=self.name)
+            release_model(self.model_id, self.device, tool_name=self.name)
             self.is_loaded = False
             self.device = "cpu"
 
     def ensure_loaded(self, device: Optional[str] = None) -> None:
-        """Ensure model is loaded (use cached if available)."""
+        """Load model from cache or create new one."""
         if self.is_loaded:
             return
-            
         if not self.model_id:
             raise ValueError(f"Tool {self.name} must set 'model_id'")
-        
-        from tool.model_config import get_model, _model_cache
-        
-        # Normalize model_id to list
-        self._model_ids = [self.model_id] if isinstance(self.model_id, str) else self.model_id
-        
-        # Try to find cached model first, otherwise load to specified device
-        if device is None:
-            # Auto-select: prefer cached model's device
-            for mid in self._model_ids:
-                for cache_key in _model_cache:
-                    if cache_key.startswith(f"{mid}:"):
-                        device = cache_key.split(":", 1)[1]
-                        break
-                if device:
-                    break
             
-            # Fallback: auto-select GPU
+        from tool.model_config import get_cached_model, cache_model
+        
+        cached_model, cached_device = get_cached_model(self.model_id, device)
+        if cached_model is not None:
+            self.model = cached_model
+            self.device = cached_device
+            self.is_loaded = True
+        else:
             if device is None:
                 try:
                     import torch
-                    if torch.cuda.is_available():
-                        device = "cuda:0"
-                    else:
-                        device = "cpu"
+                    device = "cuda:0" if torch.cuda.is_available() else "cpu"
                 except:
                     device = "cpu"
-        
-        # Load single or multiple models
-        if len(self._model_ids) == 1:
-            model_data, _ = get_model(self._model_ids[0], device, self.name)
-        else:
-            model_data = {
-                mid: get_model(mid, device, self.name)[0]
-                for mid in self._model_ids
-            }
-        
-        self.load_model_components(model_data, device)
+            self.load_model(device)
+            if self.is_loaded and self.model is not None:
+                cache_model(self.model_id, self.device, self.model, self.name)
 
     def call(self, params: Union[str, Dict]) -> Any:
         self.ensure_loaded()
@@ -178,5 +132,5 @@ class ModelBasedTool(BasicTool):
 
     @abstractmethod
     def _call_impl(self, params: Union[str, Dict]) -> Any:
-        """Tool implementation."""
+        """Implement tool logic here."""
         raise NotImplementedError

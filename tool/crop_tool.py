@@ -34,7 +34,7 @@ class CropTool(BasicTool):
     }
     example = '{"image": "img_0", "bbox": [0.1, 0.2, 0.5, 0.6]}'
     
-    def call(self, params: Union[str, Dict]) -> str:
+    def call(self, params: Union[str, Dict]) -> Dict:
         params_dict = self.parse_params(params)
         
         image_path = params_dict["image"]
@@ -42,15 +42,15 @@ class CropTool(BasicTool):
         
         # Validate bbox
         if not all(0 <= x <= 1.0 for x in bbox):
-            return json.dumps({"error": "bbox values must be between 0 and 1"})
+            return {"error": "bbox values must be between 0 and 1"}
         if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
-            return json.dumps({"error": "invalid bbox: left >= right or top >= bottom"})
+            return {"error": "invalid bbox: left >= right or top >= bottom"}
         
         # Load image
         try:
             image = image_processing(image_path)
         except Exception as e:
-            return json.dumps({"error": f"failed to load image: {e}"})
+            return {"error": f"failed to load image: {e}"}
         
         # Crop
         W, H = image.size
@@ -58,9 +58,4 @@ class CropTool(BasicTool):
         cropped = image.crop(crop_box)
         
         # Return dict with PIL Image object
-        return {
-            "success": True,
-            "output_image": cropped,  # PIL.Image object
-            "original_size": [W, H],
-            "cropped_size": list(cropped.size),
-        }
+        return {"output_image": cropped}

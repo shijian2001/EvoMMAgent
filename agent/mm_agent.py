@@ -41,7 +41,6 @@ class MultimodalAgent(BasicAgent):
             max_tokens: Optional[int] = None,
             enable_memory: bool = True,
             memory_dir: str = "memory",
-            preload_tools: bool = True,
             preload_devices: Optional[List[str]] = None,
     ):
         """Initialize the multimodal agent.
@@ -66,8 +65,7 @@ class MultimodalAgent(BasicAgent):
             max_tokens: Maximum tokens in response
             enable_memory: Whether to enable memory system for saving traces
             memory_dir: Directory for memory storage
-            preload_tools: Whether to preload tool models at initialization (default: True)
-            preload_devices: List of devices for preloading, e.g., ["cuda:0", "cuda:1"] (default: auto-detect)
+            preload_devices: Devices for preloading models (inherited from base_agent)
         """
         super().__init__(
             name=name,
@@ -78,6 +76,7 @@ class MultimodalAgent(BasicAgent):
             system_template_dir=system_template_dir,
             tool_description_template_en_file=tool_description_template_en_file,
             tool_description_template_zh_file=tool_description_template_zh_file,
+            preload_devices=preload_devices,
         )
         
         self.model_name = model_name.lower()
@@ -87,12 +86,6 @@ class MultimodalAgent(BasicAgent):
         self.max_tokens = max_tokens
         self.enable_memory = enable_memory
         self.memory_dir = memory_dir
-        
-        # Preload tool models if requested
-        if preload_tools and tool_bank:
-            from tool.model_config import preload_tools as preload_tool_models
-            tool_names = [t if isinstance(t, str) else t.get("name") for t in tool_bank]
-            preload_tool_models(tool_bank=tool_names, devices=preload_devices)
         
         # Auto-load API keys if not provided
         if api_keys is None:
@@ -332,27 +325,51 @@ class MultimodalAgent(BasicAgent):
                 
                 # Handle different return types
                 if isinstance(tool_result, dict):
-                    # Tool returned dict (may contain PIL.Image)
-                    output_object = tool_result.get("output_image") or tool_result.get("output_path")
-                    observation_data = {k: v for k, v in tool_result.items() 
-                                      if k not in ["output_image", "output_path", "success"]}
-                    # Serialize for display (without PIL.Image)
-                    observation = json.dumps(observation_data) if observation_data else "success"
-                elif isinstance(tool_result, str):
-                    # Tool returned string (legacy format or no output)
-                    observation = tool_result
-                    try:
-                        observation_dict = json.loads(observation)
-                        output_object = observation_dict.get("output_image") or observation_dict.get("output_path")
-                        observation_data = {k: v for k, v in observation_dict.items() 
-                                          if k not in ["output_image", "output_path", "success"]}
-                    except:
+                    # Tool returned dict
+                    output_image = tool_result.get("output_image")
+                    output_video = tool_result.get("output_video")
+                    
+                    # Determine output type and object
+                    if output_image:
+                        output_object = output_image
+                        output_type = "img"
+                    elif output_video:
+                        output_object = output_video
+                        output_type = "vid"
+                    else:
                         output_object = None
-                        observation_data = None
-                else:
-                    observation = str(tool_result)
+                        output_type = None
+                    
+                    # Filter out multimodal fields
+                    observation_data = {k: v for k, v in tool_result.items() 
+                                       if k not in ["output_image", "output_video"]}
+                    
+                    if output_object:
+                        # Has multimodal output - will be formatted later with memory description
+                        observation = None
+                    else:
+                        # Pure data tool - format observation now
+                        observation = self._format_observation(observation_data, tool_name)
+                
+                elif isinstance(tool_result, str):
+                    # Legacy string return
+                    observation = tool_result
                     output_object = None
+                    output_type = None
                     observation_data = None
+                else:
+                    # PIL.Image or other object (legacy visualize_regions)
+                    from PIL import Image
+                    if isinstance(tool_result, Image.Image):
+                        output_object = tool_result
+                        output_type = "img"
+                        observation_data = {}
+                        observation = None
+                    else:
+                        observation = str(tool_result)
+                        output_object = None
+                        output_type = None
+                        observation_data = None
                 
                 if verbose:
                     logging.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
@@ -368,20 +385,37 @@ class MultimodalAgent(BasicAgent):
                             json.loads(tool_args) if isinstance(tool_args, str) else tool_args
                         )
                         
-                        if output_object:
-                            # Has multimodal output - let memory handle it
+                        if output_object and output_type:
+                            # Has multimodal output - let memory handle it and get description
                             output_id = memory.log_action(
                                 tool=tool_name,
                                 properties=properties,
                                 observation=observation_data or {},
                                 output_object=output_object,  # PIL.Image or file path
-                                output_type="img"
+                                output_type=output_type
                             )
-                            # Update observation with id for LLM context
+                            # Use Memory's generated description for LLM context
                             if output_id:
-                                observation = f"Output saved as {output_id}"
+                                # Get the description from memory trace
+                                last_trace = memory.trace_data["trace"][-1]
+                                description = last_trace["observation"].get("description", "")
+                                
+                                if description:
+                                    # Combine description with any additional data fields
+                                    obs_parts = [f"Saved as {output_id}: {description}"]
+                                    
+                                    # Add non-multimodal data if present (e.g., regions, similarity)
+                                    if observation_data:
+                                        # Format additional data
+                                        formatted_data = self._format_observation(observation_data, tool_name)
+                                        obs_parts.append(formatted_data)
+                                    
+                                    observation = ". ".join(obs_parts) if len(obs_parts) > 1 else obs_parts[0]
+                                else:
+                                    # Fallback to simple format
+                                    observation = f"Output Saved as {output_id}"
                         else:
-                            # No multimodal output - observation as is
+                            # No multimodal output - observation already formatted
                             memory.log_action(
                                 tool=tool_name,
                                 properties=properties,

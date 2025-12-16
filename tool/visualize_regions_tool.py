@@ -52,10 +52,6 @@ class VisualizeRegionsOnImageTool(BasicTool):
             "width": {
                 "type": "integer",
                 "description": "Width of the bounding box lines (default: 4)"
-            },
-            "output_path": {
-                "type": "string",
-                "description": "Path to save the output image (optional)"
             }
         },
         "required": ["image_path", "regions"]
@@ -69,7 +65,7 @@ class VisualizeRegionsOnImageTool(BasicTool):
             params: Parameters containing image_path, regions, and optional styling
             
         Returns:
-            Path to the output image or error message
+            PIL.Image object with visualized regions
         """
         if not PIL_AVAILABLE:
             return "Error: PIL (Pillow) is not installed. Please install it with: pip install Pillow"
@@ -81,7 +77,6 @@ class VisualizeRegionsOnImageTool(BasicTool):
         regions = params_dict["regions"]
         color = params_dict.get("color", "yellow")
         width = params_dict.get("width", 4)
-        output_path = params_dict.get("output_path")
         
         try:
             # Load image
@@ -136,11 +131,11 @@ class VisualizeRegionsOnImageTool(BasicTool):
                         draw.rectangle((x1, y2, x1 + w, y2 + h), fill=color)
                         draw.text((x1, y2), label, fill=text_color, font=font)
             
-            # Return PIL Image object
-            return img_labeled
+            # Return dict with PIL Image object
+            return {"output_image": img_labeled}
             
         except FileNotFoundError:
-            return f"Error: Image file not found at {image_path}"
+            return {"error": f"Image file not found at {image_path}"}
         except Exception as e:
-            return f"Error: {str(e)}"
+            return {"error": str(e)}
 

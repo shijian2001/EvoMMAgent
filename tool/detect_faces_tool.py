@@ -14,7 +14,7 @@ class DetectFacesTool(ModelBasedTool):
     """A tool to detect faces in an image using DSFD face detection model."""
     
     name = "detect_faces"
-    model_id = "face_detection"  # Automatic model sharing
+    model_id = "face_detection"
     
     description_en = "Detect faces in an image and return bounding boxes for each detected face."
     description_zh = "检测图像中的人脸，并返回每个人脸的边界框。"
@@ -30,6 +30,21 @@ class DetectFacesTool(ModelBasedTool):
         "required": ["image"]
     }
     example = '{"image": "image-0"}'
+    
+    def load_model(self, device: str) -> None:
+        import face_detection
+        import os
+        from tool.model_config import FACE_DETECTION_PATH
+        
+        if not os.path.exists(FACE_DETECTION_PATH):
+            os.makedirs(os.path.dirname(FACE_DETECTION_PATH), exist_ok=True)
+            from huggingface_hub import hf_hub_download
+            hf_hub_download(repo_id="zixianma/mma", filename="WIDERFace_DSFD_RES152.pth",
+                          local_dir=os.path.dirname(FACE_DETECTION_PATH))
+        
+        self.model = face_detection.build_detector("DSFDDetector", confidence_threshold=0.5, nms_iou_threshold=0.3)
+        self.device = device
+        self.is_loaded = True
     
     def enlarge_face(self, box, W, H, f=1.5):
         """Enlarge face bounding box by a factor.
@@ -76,7 +91,7 @@ class DetectFacesTool(ModelBasedTool):
             
             # Detect faces
             with torch.no_grad():
-                faces = self.detector.detect(np.array(image))
+                faces = self.model.detect(np.array(image))
             
             # Process results
             regions = []
@@ -109,19 +124,12 @@ class DetectFacesTool(ModelBasedTool):
             
             # Return dict with PIL Image
             return {
-                "success": True,
-                "output_image": output_image,  # PIL.Image object
+                "output_image": output_image,
                 "regions": regions
             }
             
         except FileNotFoundError as e:
-            return json.dumps({
-                "success": False,
-                "error": f"Image file not found: {str(e)}"
-            })
+            return {"error": f"Image file not found: {str(e)}"}
         except Exception as e:
-            return json.dumps({
-                "success": False,
-                "error": f"Error detecting faces: {str(e)}"
-            })
+            return {"error": f"Error detecting faces: {str(e)}"}
 

@@ -38,7 +38,7 @@ class EstimateObjectDepthTool(BasicTool):
     }
     example = '{"image": "image-0", "object": "a black cat", "mode": "mean"}'
     
-    def call(self, params: Union[str, Dict]) -> str:
+    def call(self, params: Union[str, Dict]) -> Dict:
         """Execute the object depth estimation operation.
         
         Args:
@@ -57,10 +57,9 @@ class EstimateObjectDepthTool(BasicTool):
             # Use LocalizeObjects to find the object
             localize_tool_class = TOOL_REGISTRY.get("localize_objects")
             if localize_tool_class is None:
-                return json.dumps({
-                    "success": False,
+                return {
                     "error": "localize_objects tool is not available"
-                })
+                }
             
             localize_tool = localize_tool_class()
             localize_params = {
@@ -76,10 +75,10 @@ class EstimateObjectDepthTool(BasicTool):
                 localize_data = localize_result
             
             # Check if object was found
-            if not localize_data.get("success", False) or len(localize_data.get("regions", [])) == 0:
-                return json.dumps({
-                    "depth": "Object not found."
-                })
+            if "error" in localize_data or len(localize_data.get("regions", [])) == 0:
+                return {
+                    "error": "Object not found"
+                }
             
             # Use the best match object's bbox (highest score)
             regions = localize_data["regions"]
@@ -89,10 +88,7 @@ class EstimateObjectDepthTool(BasicTool):
             # Use EstimateRegionDepth to estimate depth
             estimate_depth_tool_class = TOOL_REGISTRY.get("estimate_region_depth")
             if estimate_depth_tool_class is None:
-                return json.dumps({
-                    "success": False,
-                    "error": "estimate_region_depth tool is not available"
-                })
+                return {"error": "estimate_region_depth tool is not available"}
             
             estimate_depth_tool = estimate_depth_tool_class()
             depth_params = {
@@ -100,27 +96,9 @@ class EstimateObjectDepthTool(BasicTool):
                 "bbox": bbox,
                 "mode": mode
             }
-            depth_result = estimate_depth_tool.call(depth_params)
-            
-            # Parse and return the depth result
-            if isinstance(depth_result, str):
-                depth_data = json.loads(depth_result)
-            else:
-                depth_data = depth_result
-            
-            if depth_data.get("success", False):
-                return json.dumps({
-                    "depth": depth_data.get("depth")
-                })
-            else:
-                return json.dumps({
-                    "success": False,
-                    "error": depth_data.get("error", "Failed to estimate depth")
-                })
+            # estimate_region_depth returns dict
+            return estimate_depth_tool.call(depth_params)
                 
         except Exception as e:
-            return json.dumps({
-                "success": False,
-                "error": f"Error estimating object depth: {str(e)}"
-            })
+            return {"error": f"Error estimating object depth: {str(e)}"}
 

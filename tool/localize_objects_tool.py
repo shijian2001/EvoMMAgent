@@ -11,10 +11,10 @@ from tool.visualize_regions_tool import VisualizeRegionsOnImageTool
 @register_tool(name="localize_objects")
 class LocalizeObjectsTool(ModelBasedTool):
     name = "localize_objects"
-    model_id = "grounding_dino"  # Automatic model sharing
+    model_id = "grounding_dino"
     
-    description_en = "Localize one or multiple objects/regions with bounding boxes. This tool may output objects that don't exist or miss objects that do. You should use the output only as weak evidence for reference. When answering questions about the image, you should double-check the detected objects. You should be especially cautious about the total number of regions detected, which can be more or less than the actual number."
-    description_zh = "定位图像中的一个或多个对象/区域，并返回边界框。此工具可能输出不存在的对象或遗漏存在的对象。输出仅作为弱证据参考。回答图像问题时，应仔细检查检测到的对象。特别要注意检测到的区域总数，可能多于或少于实际数量。"
+    description_en = "Localize objects with bounding boxes. May produce false positives or miss objects."
+    description_zh = "定位对象并返回边界框。可能产生误检或遗漏。"
     parameters = {
         "type": "object",
         "properties": {
@@ -25,12 +25,22 @@ class LocalizeObjectsTool(ModelBasedTool):
     }
     example = '{"image": "image-0", "objects": ["dog", "cat"]}'
 
+    def load_model(self, device: str) -> None:
+        from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
+        from tool.model_config import GROUNDING_DINO_PATH
+        self.processor = AutoProcessor.from_pretrained(GROUNDING_DINO_PATH)
+        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(GROUNDING_DINO_PATH).to(device)
+        self.device = device
+        self.is_loaded = True
+
     def _call_impl(self, params: Union[str, Dict]) -> str:
         params_dict = self.parse_params(params)
         image_path = params_dict["image"]
         objects = params_dict["objects"]
         if not isinstance(objects, list) or len(objects) == 0:
-            return json.dumps({"success": False, "error": "objects must be a non-empty list of strings"})
+            return {
+                "error": "objects must be a non-empty list of strings"
+            }
         try:
             # 加载图片
             image_path_full = image_processing(image_path, return_path=True)
@@ -38,7 +48,7 @@ class LocalizeObjectsTool(ModelBasedTool):
             image = Image.open(image_path_full).convert("RGB")
             text_labels = [objects]
             # 处理输入
-            inputs = self.processor(images=image, text=text_labels, return_tensors="pt").to(self.model.device)
+            inputs = self.processor(images=image, text=text_labels, return_tensors="pt").to(self.device)
             with torch.no_grad():
                 outputs = self.model(**inputs)
             results = self.processor.post_process_grounded_object_detection(
@@ -71,12 +81,11 @@ class LocalizeObjectsTool(ModelBasedTool):
             
             # Return dict with PIL Image
             return {
-                "success": True,
-                "output_image": output_image,  # PIL.Image object
+                "output_image": output_image,
                 "regions": regions
             }
         except FileNotFoundError as e:
-            return json.dumps({"success": False, "error": f"Image file not found: {str(e)}"})
+            return {"error": f"Image file not found: {str(e)}"}
         except Exception as e:
-            return json.dumps({"success": False, "error": f"Error localizing objects: {str(e)}"})
+            return {"error": f"Error localizing objects: {str(e)}"}
 

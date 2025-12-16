@@ -13,10 +13,10 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
     """A tool to compute CLIP similarity between one image and a list of other images."""
     
     name = "get_image2images_similarity"
-    model_id = "clip"  # Automatic model sharing with other CLIP tools!
+    model_id = "clip"
     
-    description_en = "Get the similarity between one image and a list of other images. Note that this similarity score may not be accurate and should be used as a reference only."
-    description_zh = "计算一个图像与一组其他图像之间的相似度。注意此相似度分数可能不准确，仅作为参考。"
+    description_en = "Get the similarity between one image and a list of other images."
+    description_zh = "计算一个图像与一组其他图像之间的相似度。"
     
     parameters = {
         "type": "object",
@@ -29,16 +29,20 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "The other images to compare to the reference image"
-            },
-            "tool_version": {
-                "type": "string",
-                "description": "CLIP model version (optional, defaults to ViT-H-14-378-quickgelu)",
-                "default": "ViT-H-14-378-quickgelu"
             }
         },
         "required": ["image", "other_images"]
     }
     example = '{"image": "image-0", "other_images": ["image-1", "image-2"]}'
+    
+    def load_model(self, device: str) -> None:
+        import open_clip
+        from tool.model_config import CLIP_VERSION, CLIP_PRETRAINED
+        self.model, _, self.preprocess = open_clip.create_model_and_transforms(CLIP_VERSION, pretrained=CLIP_PRETRAINED)
+        self.model.eval()
+        self.model = self.model.to(device)
+        self.device = device
+        self.is_loaded = True
     
     def _call_impl(self, params: Union[str, Dict]) -> str:
         """Execute the image similarity computation operation.
@@ -55,10 +59,9 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
         other_images = params_dict["other_images"]
         
         if not isinstance(other_images, list) or len(other_images) == 0:
-            return json.dumps({
-                "success": False,
+            return {
                 "error": "other_images must be a non-empty list of image paths"
-            })
+            }
         
         try:
             # Process reference image
@@ -92,23 +95,14 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
             
             # Find best match (argmax on the second dimension)
             best_image_index = torch.argmax(similarity_scores, dim=1).item()
-            best_image = other_images[best_image_index]
             
-            return json.dumps({
-                "success": True,
-                "similarity": sim_scores,
-                "best_image_index": best_image_index,
-                "best_image": best_image
-            })
+            return {
+                "similarity scores": sim_scores,
+                "best match": other_images[best_image_index]
+            }
             
         except FileNotFoundError as e:
-            return json.dumps({
-                "success": False,
-                "error": f"Image file not found: {str(e)}"
-            })
+            return {"error": f"Image file not found: {str(e)}"}
         except Exception as e:
-            return json.dumps({
-                "success": False,
-                "error": f"Error computing image similarity: {str(e)}"
-            })
+            return {"error": f"Error computing image similarity: {str(e)}"}
 

@@ -40,7 +40,7 @@ class ZoomInTool(BasicTool):
     }
     example = '{"image": "img_0", "bbox": [0.25, 0.25, 0.75, 0.75], "zoom_factor": 2.0}'
     
-    def call(self, params: Union[str, Dict]) -> str:
+    def call(self, params: Union[str, Dict]) -> Dict:
         params_dict = self.parse_params(params)
         
         image_path = params_dict["image"]
@@ -49,17 +49,17 @@ class ZoomInTool(BasicTool):
         
         # Validate
         if not all(0 <= x <= 1.0 for x in bbox):
-            return json.dumps({"error": "bbox values must be between 0 and 1"})
+            return {"error": "bbox values must be between 0 and 1"}
         if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
-            return json.dumps({"error": "invalid bbox: left >= right or top >= bottom"})
+            return {"error": "invalid bbox: left >= right or top >= bottom"}
         if zoom_factor <= 1:
-            return json.dumps({"error": "zoom_factor must be > 1"})
+            return {"error": "zoom_factor must be > 1"}
         
         # Load image
         try:
             image = image_processing(image_path)
         except Exception as e:
-            return json.dumps({"error": f"failed to load image: {e}"})
+            return {"error": f"failed to load image: {e}"}
         
         # Crop
         W, H = image.size
@@ -71,10 +71,4 @@ class ZoomInTool(BasicTool):
         zoomed = cropped.resize(new_size, Image.LANCZOS)
         
         # Return dict with PIL Image object
-        return {
-            "success": True,
-            "output_image": zoomed,  # PIL.Image object
-            "original_size": [W, H],
-            "cropped_size": list(cropped.size),
-            "zoomed_size": list(zoomed.size),
-        }
+        return {"output_image": zoomed}
