@@ -32,7 +32,10 @@ class Memory:
         self.task_id = None
         self.task_dir = None
         self.trace_data = None
-        self.ref_counters = {"img": 0, "vid": 0, "audio": 0}
+        self.ref_counters = {"img": 0, "vid": 0}
+        
+        # Path to ID mapping for fast lookup
+        self._path_to_id = {}
     
     def _initialize_counter_from_disk(self):
         """Initialize task counter from existing task directories."""
@@ -73,7 +76,10 @@ class Memory:
             },
             "trace": []
         }
-        self.ref_counters = {"img": 0, "vid": 0, "audio": 0}
+        self.ref_counters = {"img": 0, "vid": 0}
+        
+        # Clear path-to-id mapping for new task
+        self._path_to_id = {}
         
         return self.task_id
     
@@ -82,7 +88,7 @@ class Memory:
         
         Args:
             file_path: Path to input file
-            modality: Type of input (img, vid, audio)
+            modality: Type of input (img, vid)
             
         Returns:
             id: Reference ID for the input (e.g., "img_0")
@@ -95,8 +101,13 @@ class Memory:
         dst_path = os.path.join(self.task_dir, f"{id_str}{ext}")
         shutil.copy2(file_path, dst_path)
         
+        # Record path-to-id mapping (both original and task_dir paths)
+        self._path_to_id[file_path] = id_str  # Original path
+        self._path_to_id[dst_path] = id_str   # Task dir path
+        
         # Add to input dict with original path
-        modality_key = f"{modality}s" if modality == "img" else f"{modality}s"  # images, videos, audios
+        modality_map = {"img": "images", "vid": "videos"}
+        modality_key = modality_map.get(modality, f"{modality}s")
         if modality_key not in self.trace_data["input"]:
             self.trace_data["input"][modality_key] = []
         
@@ -141,7 +152,7 @@ class Memory:
             properties: Tool input parameters (e.g., {"image": "img_0", "bbox": [...]})
             observation: Tool output - string if no multimodal output, dict with tool data otherwise
             output_object: Optional multimodal object (PIL.Image, video path, etc.)
-            output_type: Type of output (img, vid, audio)
+            output_type: Type of output (img, vid)
             
         Returns:
             output_id: Reference ID of output if created, else None
@@ -188,9 +199,11 @@ class Memory:
         Args:
             obj: Multimodal object (PIL.Image, file path, etc.)
             output_id: Reference ID
-            modality: Type (img, vid, audio)
+            modality: Type (img, vid)
         """
         try:
+            dst_path = None
+            
             if modality == "img":
                 # Handle PIL Image
                 try:
@@ -198,16 +211,14 @@ class Memory:
                     if isinstance(obj, Image.Image):
                         dst_path = os.path.join(self.task_dir, f"{output_id}.png")
                         obj.save(dst_path)
-                        return
+                    elif isinstance(obj, str) and os.path.exists(obj):
+                        ext = os.path.splitext(obj)[1]
+                        dst_path = os.path.join(self.task_dir, f"{output_id}{ext}")
+                        shutil.copy2(obj, dst_path)
+                        # Record original path mapping
+                        self._path_to_id[obj] = output_id
                 except ImportError:
                     pass
-                
-                # Handle file path
-                if isinstance(obj, str) and os.path.exists(obj):
-                    ext = os.path.splitext(obj)[1]
-                    dst_path = os.path.join(self.task_dir, f"{output_id}{ext}")
-                    shutil.copy2(obj, dst_path)
-                    return
             
             elif modality == "vid":
                 # Handle video file path
@@ -215,13 +226,22 @@ class Memory:
                     ext = os.path.splitext(obj)[1]
                     dst_path = os.path.join(self.task_dir, f"{output_id}{ext}")
                     shutil.copy2(obj, dst_path)
-                    return
+                    # Record original path mapping
+                    self._path_to_id[obj] = output_id
             
             # Fallback: try to copy as file
-            if isinstance(obj, str) and os.path.exists(obj):
-                ext = os.path.splitext(obj)[1] or ".dat"
-                dst_path = os.path.join(self.task_dir, f"{output_id}{ext}")
-                shutil.copy2(obj, dst_path)
+            else:
+                if isinstance(obj, str) and os.path.exists(obj):
+                    ext = os.path.splitext(obj)[1] or ".dat"
+                    dst_path = os.path.join(self.task_dir, f"{output_id}{ext}")
+                    shutil.copy2(obj, dst_path)
+                    # Record original path mapping
+                    self._path_to_id[obj] = output_id
+            
+            # Record task_dir path mapping
+            if dst_path:
+                self._path_to_id[dst_path] = output_id
+                
         except Exception as e:
             import logging
             logging.error(f"Failed to save output object {output_id}: {e}")
@@ -281,7 +301,7 @@ class Memory:
             Properties with IDs replaced by file paths
         """
         def resolve_value(value):
-            if isinstance(value, str) and (value.startswith("img_") or value.startswith("vid_") or value.startswith("audio_")):
+            if isinstance(value, str) and (value.startswith("img_") or value.startswith("vid_")):
                 # Try to resolve as ID
                 path = self.get_file_path(value)
                 return path if path else value
@@ -293,6 +313,40 @@ class Memory:
                 return value
         
         return {key: resolve_value(value) for key, value in properties.items()}
+    
+    def resolve_paths_to_ids(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve file paths back to reference IDs in observation data.
+        
+        Uses pre-maintained mapping table for O(1) lookup.
+        
+        Args:
+            data: Observation data that may contain file paths
+            
+        Returns:
+            Data with file paths replaced by reference IDs
+            
+        Example:
+            Input:  {"best match": "/path/to/img.png"}
+            Output: {"best match": "img_1"}
+        """
+        def resolve(value):
+            """Recursively replace paths with IDs."""
+            if isinstance(value, str):
+                # Direct lookup in mapping table - O(1)
+                return self._path_to_id.get(value, value)
+            
+            if isinstance(value, dict):
+                # Recursively handle dict
+                return {k: resolve(v) for k, v in value.items()}
+            
+            if isinstance(value, list):
+                # Recursively handle list
+                return [resolve(item) for item in value]
+            
+            # Other types return as-is
+            return value
+        
+        return resolve(data)
     
     def _generate_description(
         self, 

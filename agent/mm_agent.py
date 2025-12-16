@@ -349,6 +349,9 @@ class MultimodalAgent(BasicAgent):
                         observation = None
                     else:
                         # Pure data tool - format observation now
+                        # Convert file paths back to IDs for cleaner LLM context
+                        if memory:
+                            observation_data = memory.resolve_paths_to_ids(observation_data)
                         observation = self._format_observation(observation_data, tool_name)
                 
                 elif isinstance(tool_result, str):
