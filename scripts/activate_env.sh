@@ -29,3 +29,5 @@ fi
 echo "🚀 Activating environment: ${ENV_PATH}"
 source "${ENV_PATH}/bin/activate"
 
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+
