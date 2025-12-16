@@ -15,7 +15,7 @@ class GetObjectsTool(ModelBasedTool):
     model_id = "ram"
     
     description_en = "Detect and extract objects from an image using the Recognize Anything Model (RAM)."
-    description_zh = "使用识别任何模型 (RAM) 从图像中检测和提取对象。"
+    description_zh = "从图像中检测和提取对象。"
     
     parameters = {
         "type": "object",

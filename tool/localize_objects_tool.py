@@ -42,12 +42,10 @@ class LocalizeObjectsTool(ModelBasedTool):
                 "error": "objects must be a non-empty list of strings"
             }
         try:
-            # 加载图片
             image_path_full = image_processing(image_path, return_path=True)
             original_image = image_processing(image_path)
             image = Image.open(image_path_full).convert("RGB")
             text_labels = [objects]
-            # 处理输入
             inputs = self.processor(images=image, text=text_labels, return_tensors="pt").to(self.device)
             with torch.no_grad():
                 outputs = self.model(**inputs)

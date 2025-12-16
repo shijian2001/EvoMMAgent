@@ -14,7 +14,7 @@ class EstimateObjectDepthTool(BasicTool):
     
     name = "estimate_object_depth"
     description_en = "Estimate the depth of an object in an image using DepthAnything model. It returns an estimated depth value of the object specified by a brief text description. The smaller the value is, the closer the object is to the camera, and the larger the farther. This tool may help you to better reason about the spatial relationship, like which object is closer to the camera."
-    description_zh = "使用 DepthAnything 模型估计图像中对象的深度。返回由简短文本描述指定的对象的估计深度值。值越小，表示对象离相机越近；值越大，表示对象离相机越远。此工具可以帮助您更好地推理空间关系，例如哪个对象更接近相机。"
+    description_zh = "估计图像中对象的深度。返回由简短文本描述指定的对象的估计深度值。值越小，表示对象离相机越近；值越大，表示对象离相机越远。"
     
     parameters = {
         "type": "object",
