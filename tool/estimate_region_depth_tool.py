@@ -50,14 +50,9 @@ class EstimateRegionDepthTool(ModelBasedTool):
         import os
         from tool.model_config import DEPTH_ANYTHING_PATH
         
-        model_id = "depth-anything/Depth-Anything-V2-Small-hf"
+        model_id = DEPTH_ANYTHING_PATH
         self.image_processor = AutoImageProcessor.from_pretrained(model_id)
         self.model = AutoModelForDepthEstimation.from_pretrained(model_id)
-        if os.path.exists(DEPTH_ANYTHING_PATH):
-            state_dict = torch.load(DEPTH_ANYTHING_PATH, map_location='cpu', weights_only=True)
-            if 'state_dict' in state_dict:
-                state_dict = state_dict['state_dict']
-            self.model.load_state_dict(state_dict, strict=False)
         self.model.to(device)
         self.model.eval()
         self.device = device
