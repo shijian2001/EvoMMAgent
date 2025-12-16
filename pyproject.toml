@@ -33,7 +33,7 @@ dependencies = [
     "huggingface-hub>=0.20.0",
     "open-clip-torch>=2.24.0",
     "easyocr>=1.7.0",
-    "transformers[torch]>=4.40.0,<5.0.0",
+    "transformers[torch]>=4.30.0,<4.40.0",
     "fairscale==0.4.4",
     "timm==0.4.12",
     "supervision>=0.27.0",
