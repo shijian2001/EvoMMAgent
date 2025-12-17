@@ -86,7 +86,8 @@ class LocalizeObjectsTool(ModelBasedTool):
                 "image_path": image_path_full,
                 "regions": [{"bbox": r["bbox"], "label": r["label"]} for r in regions]
             }
-            output_image = visualize_tool.call(visualize_params)
+            output_image_result = visualize_tool.call(visualize_params)
+            output_image = output_image_result.get("output_image")
             
             # Return dict with PIL Image
             return {
