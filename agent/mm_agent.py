@@ -303,8 +303,7 @@ class MultimodalAgent(BasicAgent):
                     for idx, msg in enumerate(conversation_context, 1):
                         if msg.get("type") == "text":
                             text = msg.get("text", "")
-                            preview = text[:300] + "..." if len(text) > 300 else text
-                            logger.info(f"   [{idx}] {preview}")
+                            logger.info(f"   [{idx}] {text}")
                         else:
                             logger.info(f"   [{idx}] [multimodal: {msg.get('type')}]")
                 
@@ -394,8 +393,7 @@ class MultimodalAgent(BasicAgent):
                 if verbose:
                     logger.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
                     logger.info(f"   Input: {tool_args}")
-                    obs_preview = str(observation)[:500] + "..." if len(str(observation)) > 500 else str(observation)
-                    logger.info(f"   Output: {obs_preview}")
+                    logger.info(f"   Output: {observation}")
                 
                 # Log action to memory
                 if memory:
