@@ -13,8 +13,8 @@ class LocalizeObjectsTool(ModelBasedTool):
     name = "localize_objects"
     model_id = "grounding_dino"
     
-    description_en = "Localize objects with bounding boxes. May produce false positives or miss objects."
-    description_zh = "定位对象并返回边界框。可能产生误检或遗漏。"
+    description_en = "Localize objects with normalized bounding boxes [x1, y1, x2, y2] where values are between 0 and 1."
+    description_zh = "定位对象并返回归一化边界框 [x1, y1, x2, y2]，坐标值在 0 到 1 之间"
     parameters = {
         "type": "object",
         "properties": {
@@ -59,8 +59,19 @@ class LocalizeObjectsTool(ModelBasedTool):
             result = results[0]
             regions = []
             obj_cnt = {}
+            
+            # Get image dimensions for normalization
+            W, H = image.size
+            
             for box, score, label in zip(result["boxes"], result["scores"], result["labels"]):
-                bbox = [round(float(x), 4) for x in box.tolist()]
+                # Normalize bbox to [0, 1] range
+                box_list = box.tolist()
+                bbox = [
+                    round(float(box_list[0]) / W, 4),  # x1
+                    round(float(box_list[1]) / H, 4),  # y1
+                    round(float(box_list[2]) / W, 4),  # x2
+                    round(float(box_list[3]) / H, 4)   # y2
+                ]
                 label_str = str(label)
                 obj_cnt[label_str] = obj_cnt.get(label_str, 0) + 1
                 label_out = f"{label_str}-{obj_cnt[label_str]}" if obj_cnt[label_str] > 1 else label_str

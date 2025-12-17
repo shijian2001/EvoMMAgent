@@ -13,7 +13,7 @@ class EstimateObjectDepthTool(BasicTool):
     """A tool to estimate the depth of an object in an image using DepthAnything model."""
     
     name = "estimate_object_depth"
-    description_en = "Estimate the depth of an object in an image using DepthAnything model. It returns an estimated depth value of the object specified by a brief text description. The smaller the value is, the closer the object is to the camera, and the larger the farther. This tool may help you to better reason about the spatial relationship, like which object is closer to the camera."
+    description_en = "Estimate the depth of an object in an image using DepthAnything model. It returns an estimated depth value of the object specified by a brief text description. The smaller the value is, the closer the object is to the camera, and the larger the farther."
     description_zh = "估计图像中对象的深度。返回由简短文本描述指定的对象的估计深度值。值越小，表示对象离相机越近；值越大，表示对象离相机越远。"
     
     parameters = {
@@ -85,17 +85,7 @@ class EstimateObjectDepthTool(BasicTool):
             best_match_idx = np.argmax([region.get("score", 0) for region in regions])
             bbox = regions[best_match_idx]["bbox"]
             
-            # Normalize bbox (localize_objects returns pixel coordinates)
-            from PIL import Image
-            img = Image.open(image_path)
-            W, H = img.size
-            normalized_bbox = [
-                bbox[0] / W,  # x1
-                bbox[1] / H,  # y1
-                bbox[2] / W,  # x2
-                bbox[3] / H   # y2
-            ]
-            
+            # bbox is already normalized from localize_objects
             # Use EstimateRegionDepth to estimate depth
             estimate_depth_tool_class = TOOL_REGISTRY.get("estimate_region_depth")
             if estimate_depth_tool_class is None:
@@ -104,7 +94,7 @@ class EstimateObjectDepthTool(BasicTool):
             estimate_depth_tool = estimate_depth_tool_class()
             depth_params = {
                 "image": image_path,
-                "bbox": normalized_bbox,
+                "bbox": bbox,
                 "mode": mode
             }
             # estimate_region_depth returns dict
