@@ -14,6 +14,8 @@ from agent.mm_agent import MultimodalAgent
 
 
 # Test data paths
+# Note: images can be file paths (str), PIL.Image objects, or dicts with image params
+# Example: Load from BLINK dataset - TEST_IMAGE = load_dataset("./data/eval/image/BLINK")["test"][0]["images"][0]
 TEST_IMAGE = os.path.abspath("test_image.png")
 
 
