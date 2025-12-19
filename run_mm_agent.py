@@ -11,14 +11,10 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 sys.path.append('.')
 
 from agent.mm_agent import MultimodalAgent
-from datasets import load_dataset
 
 
 # Test data paths
-# Note: images can be file paths (str), PIL.Image objects, or dicts with image params
-# Example: Load from BLINK dataset 
-TEST_IMAGE = load_dataset("./data/eval/image/BLINK")["test"][0]["images"][0]
-# TEST_IMAGE = os.path.abspath("test_image.png")
+TEST_IMAGE = os.path.abspath("test_image.png")
 
 
 async def test_calculator_with_memory():
@@ -74,6 +70,14 @@ async def test_crop_with_memory():
     print("\n" + "="*80)
     print("Test 2: Crop with Memory")
     print("="*80)
+    
+    if not os.path.exists(TEST_IMAGE):
+        print(f"⚠️ Test image not found: {TEST_IMAGE}")
+        print("Creating a test image...")
+        from PIL import Image
+        img = Image.new('RGB', (400, 400), color='red')
+        img.save(TEST_IMAGE)
+        print(f"✓ Created test image: {TEST_IMAGE}")
     
     try:
         agent = MultimodalAgent(
