@@ -17,13 +17,18 @@ def explore(path: str):
     p = Path(path)
     print(f"\n🔍 Exploring: {p}\n{'=' * 60}")
 
-    # Detect configs (subdirs containing data files)
-    config_dirs = [d for d in p.iterdir() if d.is_dir() and not d.name.startswith('.')]
-    has_configs = config_dirs and any(
-        (d / "dataset_info.json").exists() or list(d.glob("*.arrow")) or list(d.glob("*.parquet"))
-        for d in config_dirs
-    )
-    configs = [(d.name, d) for d in config_dirs] if has_configs else [("default", p)]
+    # Detect configs (only subdirs containing data files)
+    config_dirs = [
+        d for d in p.iterdir() 
+        if d.is_dir() 
+        and not d.name.startswith('.') 
+        and (
+            (d / "dataset_info.json").exists() 
+            or list(d.glob("*.arrow")) 
+            or list(d.glob("*.parquet"))
+        )
+    ]
+    configs = [(d.name, d) for d in config_dirs] if config_dirs else [("default", p)]
 
     print(f"📁 Configs: {[c[0] for c in configs]}\n")
 
