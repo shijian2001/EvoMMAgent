@@ -7,7 +7,9 @@ supporting multimodal inputs (images, videos, or mixed) and tool calling.
 import os
 import logging
 import json
+import tempfile
 from typing import List, Dict, Optional, Union, Any
+from PIL import Image
 
 from agent.base_agent import BasicAgent
 from api import APIPool, load_api_keys
@@ -195,7 +197,7 @@ class MultimodalAgent(BasicAgent):
     async def act(
             self,
             query: str,
-            images: Optional[List[Union[str, Dict]]] = None,
+            images: Optional[List[Union[str, Dict, Image.Image]]] = None,
             videos: Optional[List[Union[str, Dict]]] = None,
             verbose: bool = True,
             return_history: bool = False,
@@ -204,7 +206,7 @@ class MultimodalAgent(BasicAgent):
         
         Args:
             query: Text query
-            images: Optional list of image paths/URLs or dicts with image params
+            images: Optional list of image paths/URLs, PIL.Image objects, or dicts with image params
             videos: Optional list of video paths/URLs or dicts with video params
             verbose: Whether to print execution steps
             return_history: Whether to return full execution history
@@ -273,8 +275,19 @@ class MultimodalAgent(BasicAgent):
         if images:
             for img in images:
                 if isinstance(img, str):
+                    # Path or URL
                     user_content.append({"type": "image", "image": img})
+                elif isinstance(img, Image.Image):
+                    # PIL.Image object - save to temporary file
+                    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False, mode='wb') as f:
+                        # Convert to RGB if needed
+                        if img.mode not in ('RGB', 'L'):
+                            img = img.convert('RGB')
+                        img.save(f, format='JPEG')
+                        temp_path = f.name
+                    user_content.append({"type": "image", "image": temp_path})
                 elif isinstance(img, dict):
+                    # Dict with image params
                     user_content.append({"type": "image", **img})
         
         # Add videos
