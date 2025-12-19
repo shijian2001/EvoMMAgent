@@ -34,6 +34,9 @@ uv sync --active --extra dev
 
 # With vision-language (VL) support
 uv sync --active --extra vl
+
+# Install all extras
+uv sync --active --all-extras
 ```
 
 ### 5. Configuration for video processing (VL only)
