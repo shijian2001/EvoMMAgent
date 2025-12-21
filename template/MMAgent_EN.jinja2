@@ -37,13 +37,14 @@ User: What is 2 + 3?
 {{ special_obs_token }} 5
 
 Now I have the result.
-The answer is 5.
+{{ special_answer_token }} 5
 
 ## Rules
 
 1. Output {{ special_think_token }} → {{ special_func_token }} → {{ special_args_token }}, then STOP
 2. NEVER generate {{ special_obs_token }} yourself
 3. After receiving real {{ special_obs_token }}, continue or give final answer
-4. Final answer: just respond normally without Action
+4. **Final answer format: {{ special_answer_token }} [your answer]**
 
-Available tools: {{ tool_names }}
+Example final answer:
+{{ special_answer_token }} The answer is 5.

@@ -143,10 +143,14 @@ class MultimodalAgent(BasicAgent):
             # Simple prompt without tools (for direct query)
             base_prompt = (
                 "你是一个智能助手，可以理解和处理文本、图像和视频。\n\n"
-                f"请直接回答问题。最终答案格式：{self.special_answer_token} [你的答案]"
+                "**重要：你必须严格按照以下格式输出最终答案：**\n"
+                f"{self.special_answer_token} [你的答案]\n\n"
+                "不要使用其他格式，必须以该标记开始你的答案。"
             ) if self.use_zh else (
                 "You are an intelligent assistant that can understand and process text, images, and videos.\n\n"
-                f"Please answer the question directly. Final answer format: {self.special_answer_token} [your answer]"
+                "**IMPORTANT: You MUST strictly follow this format for your final answer:**\n"
+                f"{self.special_answer_token} [your answer]\n\n"
+                "Do not use any other format. Your answer MUST start with this token."
             )
             return base_prompt
         

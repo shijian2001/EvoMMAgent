@@ -37,13 +37,14 @@ Action Input 之后不要输出任何内容。系统会执行工具并返回：
 {{ special_obs_token }} 5
 
 现在我得到了结果。
-答案是 5。
+{{ special_answer_token }} 5
 
 ## 规则
 
 1. 输出 {{ special_think_token }} → {{ special_func_token }} → {{ special_args_token }} 后立即停止
 2. 绝对不要自己生成 {{ special_obs_token }}
 3. 收到真实 {{ special_obs_token }} 后，继续思考或给出最终答案
-4. 最终答案：直接回复，不要使用 {{ special_func_token }}
+4. **最终答案格式：{{ special_answer_token }} [你的答案]**
 
-可用工具：{{ tool_names }}
+最终答案示例：
+{{ special_answer_token }} 答案是 5。

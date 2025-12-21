@@ -14,81 +14,55 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
 
 
-def extract_answer(response: str, task_type: str) -> str:
-    """Extract answer from agent response.
+def make_options(choices, format='letter'):
+    """Generate option prefixes in different formats.
+    
+    Args:
+        choices: List of choice texts
+        format: 'numeric' or 'letter'
+    
+    Returns:
+        Tuple of (prefix1, prefix2, full_options)
+        - prefix1: ['A', 'B', 'C', ...] or ['1', '2', '3', ...]
+        - prefix2: ['(A)', '(B)', '(C)', ...] or ['(1)', '(2)', '(3)', ...]
+        - full_options: ['(A) choice text', '(B) choice text', ...]
+    """
+    assert format in ['numeric', 'letter']
+    if format == 'numeric':
+        prefix1 = [str(i + 1) for i in range(len(choices))]
+    else:
+        prefix1 = [chr(ord("a") + i).upper() for i in range(len(choices))]
+    prefix2 = [f"({p})" for p in prefix1]
+    return prefix1, prefix2, [f'{p} {c}' for p, c in zip(prefix2, choices)]
+
+
+def extract_answer(response: str, special_answer_token: str = "\nAnswer:") -> str:
+    """Extract content after answer token.
     
     Args:
         response: Agent's complete response
-        task_type: Task type (multi-choice / open-ended / yes-no / true-false)
+        special_answer_token: Special token marking the final answer
     
     Returns:
-        Extracted answer string
+        Extracted answer string (first line after token), or empty if token not found
     """
-    # Method 1: Extract content after "Answer:" token
-    if "Answer:" in response:
-        answer = response.split("Answer:")[-1].strip()
-        
-        # For multiple choice: extract only the letter
-        if task_type == "multi-choice":
-            match = re.search(r'^([A-E])', answer)
-            if match:
-                return match.group(1)
-            # Fallback: search anywhere in the answer line
-            match = re.search(r'([A-E])', answer.split('\n')[0])
-            if match:
-                return match.group(1)
-        
-        # For yes-no: normalize to Yes/No
-        elif task_type == "yes-no":
-            answer_lower = answer.lower()
-            if "yes" in answer_lower:
-                return "Yes"
-            elif "no" in answer_lower:
-                return "No"
-        
-        # For true-false: normalize to True/False
-        elif task_type == "true-false":
-            answer_lower = answer.lower()
-            if "true" in answer_lower:
-                return "True"
-            elif "false" in answer_lower:
-                return "False"
-        
-        return answer.split('\n')[0].strip()  # Take first line
-    
-    # Fallback: Take last non-tool-call line
-    lines = response.strip().split('\n')
-    for line in reversed(lines):
-        line = line.strip()
-        if line and not any(tok in line for tok in ["Thought:", "Action:", "Action Input:", "Observation:"]):
-            if task_type == "multi-choice":
-                match = re.search(r'([A-E])', line)
-                if match:
-                    return match.group(1)
-            elif task_type == "yes-no":
-                line_lower = line.lower()
-                if "yes" in line_lower:
-                    return "Yes"
-                elif "no" in line_lower:
-                    return "No"
-            elif task_type == "true-false":
-                line_lower = line.lower()
-                if "true" in line_lower:
-                    return "True"
-                elif "false" in line_lower:
-                    return "False"
-            return line
-    
-    return ""
+    token = special_answer_token.lstrip('\n')
+    if token not in response:
+        return ""
+    answer = response.split(token)[-1].strip()
+    return answer.split('\n')[0].strip()
 
 
-def evaluate_answer(predicted: str, ground_truth: str, task_type: str) -> bool:
+def evaluate_answer(predicted: str, ground_truth: str, task_type: str, 
+                   choices: list = None, option_format: str = 'letter') -> bool:
     """Evaluate answer correctness.
     
     Args:
-        predicted: Predicted answer
+        predicted: Predicted answer (extracted text after answer token)
         ground_truth: Ground truth answer
         task_type: Task type
+        choices: List of choices (for multi-choice questions)
+        option_format: 'letter' or 'numeric' for option prefixes
     
     Returns:
         True if correct, False otherwise
@@ -97,19 +71,40 @@ def evaluate_answer(predicted: str, ground_truth: str, task_type: str) -> bool:
         return False
     
     if task_type == "multi-choice":
-        # Multiple choice: exact letter match
-        pred_letter = re.search(r'([A-E])', predicted)
-        gt_letter = re.search(r'([A-E])', ground_truth)
-        if pred_letter and gt_letter:
-            return pred_letter.group(1) == gt_letter.group(1)
-        return predicted.strip().upper() == ground_truth.strip().upper()
+        if not choices:
+            # Fallback: direct comparison
+            return predicted.strip().lower() == ground_truth.strip().lower()
+        
+        # Generate formats for ALL choices
+        prefix1, prefix2, full_options = make_options(choices, format=option_format)
+        
+        # Try to match predicted with each choice
+        matched_choice = None
+        pred_lower = predicted.lower()
+        
+        for i, choice in enumerate(choices):
+            # Three formats for this choice
+            formats = [prefix1[i], prefix2[i], full_options[i]]
+            
+            # Check bidirectional match with any format
+            for fmt in formats:
+                fmt_lower = fmt.lower()
+                if fmt_lower in pred_lower or pred_lower in fmt_lower:
+                    matched_choice = choice.strip()
+                    break
+            
+            if matched_choice:
+                break
+        
+        # Compare matched choice with ground truth
+        if matched_choice:
+            return matched_choice.lower() == ground_truth.strip().lower()
+        
+        return False
     
-    elif task_type in ["yes-no", "true-false"]:
-        # Yes/No or True/False: case-insensitive match
-        return predicted.strip().lower() == ground_truth.strip().lower()
-    
-    # Open-ended: normalized comparison
-    return predicted.strip().lower() == ground_truth.strip().lower()
+    else:
+        # Other task types not implemented yet
+        raise NotImplementedError(f"Task type '{task_type}' is not implemented yet")
 
 
 class Runner:
@@ -149,6 +144,9 @@ class Runner:
         
         # Store whether using tools (for response saving logic)
         self.use_tools = agent_config.get("tool_bank") is not None
+        
+        # Store special_answer_token for task instructions
+        self.special_answer_token = agent_config.get("special_answer_token", "\nAnswer:")
         
         # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -207,7 +205,7 @@ class Runner:
             
             # Append task-specific instruction based on task type
             task_type = sample.get('type', 'open-ended')
-            task_instruction = get_task_instruction(task_type, self.use_zh)
+            task_instruction = get_task_instruction(task_type, self.use_zh, self.special_answer_token)
             if task_instruction:
                 query = f"{query}\n\n{task_instruction}"
             
@@ -229,8 +227,14 @@ class Runner:
             response = result if isinstance(result, str) else result.get("response", "")
             
             # Extract and evaluate answer
-            predicted = extract_answer(response, sample['type'])
-            is_correct = evaluate_answer(predicted, sample['answer'], sample['type'])
+            predicted = extract_answer(response, self.special_answer_token)
+            is_correct = evaluate_answer(
+                predicted=predicted,
+                ground_truth=sample['answer'],
+                task_type=sample['type'],
+                choices=sample.get('choices'),
+                option_format='letter'
+            )
             
             return {
                 "idx": sample['idx'],
