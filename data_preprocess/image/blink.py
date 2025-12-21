@@ -9,9 +9,11 @@ Processing pipeline:
 
 import argparse
 import json
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import datasets
+from tqdm import tqdm
 
 
 # ============ Dataset-specific functions (customize per dataset) ============
@@ -76,25 +78,30 @@ def save_images(images: list, idx: int, image_dir: Path) -> list[str]:
     return image_paths
 
 
+def process_one_sample(args):
+    """Process one sample: extract images, save them, return record."""
+    example, idx, image_dir = args
+    images = extract_images(example)
+    image_paths = save_images(images, idx, image_dir)
+    return convert_sample(example, idx, image_paths)
+
+
 def process_and_save(dataset, jsonl_path: Path, image_dir: Path, num_proc: int = 8):
     """Process dataset and save to JSONL + image folder."""
     jsonl_path.parent.mkdir(parents=True, exist_ok=True)
     image_dir.mkdir(parents=True, exist_ok=True)
     
-    # Parallel processing: save images and generate records
-    def process_one(example, idx):
-        images = extract_images(example)
-        image_paths = save_images(images, idx, image_dir)
-        return convert_sample(example, idx, image_paths)
+    # Prepare arguments
+    tasks = [(dataset[i], i, image_dir) for i in range(len(dataset))]
     
+    # Parallel processing
     print(f"🚀 Processing with {num_proc} processes...")
-    records = dataset.map(
-        process_one,
-        with_indices=True,
-        num_proc=num_proc,
-        remove_columns=dataset.column_names,  # Remove original columns to avoid serialization errors
-        desc="Processing samples"
-    )
+    with ProcessPoolExecutor(max_workers=num_proc) as executor:
+        records = list(tqdm(
+            executor.map(process_one_sample, tasks),
+            total=len(dataset),
+            desc="Processing samples"
+        ))
     
     # Write to JSONL
     print("📝 Writing JSONL...")
@@ -102,7 +109,7 @@ def process_and_save(dataset, jsonl_path: Path, image_dir: Path, num_proc: int =
         for record in records:
             f.write(json.dumps(record, ensure_ascii=False) + '\n')
     
-    print(f"✅ Saved {len(dataset)} records to {jsonl_path}")
+    print(f"✅ Saved {len(records)} records to {jsonl_path}")
     print(f"✅ Saved images to {image_dir}")
 
 
