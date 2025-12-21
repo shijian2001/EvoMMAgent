@@ -76,21 +76,30 @@ def save_images(images: list, idx: int, image_dir: Path) -> list[str]:
     return image_paths
 
 
-def process_and_save(dataset, jsonl_path: Path, image_dir: Path):
+def process_and_save(dataset, jsonl_path: Path, image_dir: Path, num_proc: int = 8):
     """Process dataset and save to JSONL + image folder."""
     jsonl_path.parent.mkdir(parents=True, exist_ok=True)
     image_dir.mkdir(parents=True, exist_ok=True)
     
+    # Parallel processing: save images and generate records
+    def process_one(example, idx):
+        images = extract_images(example)
+        image_paths = save_images(images, idx, image_dir)
+        return convert_sample(example, idx, image_paths)
+    
+    print(f"🚀 Processing with {num_proc} processes...")
+    records = dataset.map(
+        process_one,
+        with_indices=True,
+        num_proc=num_proc,
+        desc="Processing samples"
+    )
+    
+    # Write to JSONL
+    print("📝 Writing JSONL...")
     with open(jsonl_path, 'w', encoding='utf-8') as f:
-        for idx, example in enumerate(dataset):
-            images = extract_images(example)
-            image_paths = save_images(images, idx, image_dir)
-            record = convert_sample(example, idx, image_paths)
-            
+        for record in records:
             f.write(json.dumps(record, ensure_ascii=False) + '\n')
-            
-            if (idx + 1) % 100 == 0:
-                print(f"  Processed {idx + 1}/{len(dataset)} samples...")
     
     print(f"✅ Saved {len(dataset)} records to {jsonl_path}")
     print(f"✅ Saved images to {image_dir}")
@@ -103,10 +112,11 @@ def main():
     parser.add_argument("input_dir", type=str, help="Path to BLINK dataset directory")
     parser.add_argument("--jsonl_path", type=str, required=True, help="Output JSONL file path")
     parser.add_argument("--image_dir", type=str, required=True, help="Output image folder path")
+    parser.add_argument("--num_proc", type=int, default=8, help="Number of processes for parallel processing")
     args = parser.parse_args()
     
     dataset = load_dataset(args.input_dir)
-    process_and_save(dataset, Path(args.jsonl_path), Path(args.image_dir))
+    process_and_save(dataset, Path(args.jsonl_path), Path(args.image_dir), args.num_proc)
 
 
 if __name__ == "__main__":
