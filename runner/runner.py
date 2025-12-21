@@ -147,8 +147,23 @@ class Runner:
         # Store language preference for task instructions
         self.use_zh = agent_config.get("use_zh", False)
         
+        # Store whether using tools (for response saving logic)
+        self.use_tools = agent_config.get("tool_bank") is not None
+        
         # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create agent pool once for all batches
+        if self.verbose:
+            logger.info(f"🔧 Initializing {self.max_concurrent} agents...")
+        
+        self.agents = [
+            MultimodalAgent(**self.agent_config)
+            for _ in range(self.max_concurrent)
+        ]
+        
+        if self.verbose:
+            logger.info(f"✅ Agent pool ready\n")
     
     def load_dataset(self) -> List[Dict]:
         """Load dataset from JSONL file.
@@ -221,10 +236,11 @@ class Runner:
                 "idx": sample['idx'],
                 "question": sample['question'],
                 "choices": sample.get('choices', []),
+                "query": query,
                 "ground_truth": sample['answer'],
                 "predicted": predicted,
                 "is_correct": is_correct,
-                "response": response  # Keep full response for debugging
+                "response": "" if self.use_tools else response
             }
             
         except Exception as e:
@@ -233,9 +249,11 @@ class Runner:
                 "idx": sample['idx'],
                 "question": sample['question'],
                 "choices": sample.get('choices', []),
+                "query": "",
                 "ground_truth": sample['answer'],
                 "predicted": "",
                 "is_correct": False,
+                "response": "",
                 "error": str(e)
             }
     
@@ -258,12 +276,7 @@ class Runner:
             logger.info(f"Batch {batch_id}: Processing {len(samples)} samples")
             logger.info(f"{'='*80}")
         
-        # Create agent pool
-        agents = [
-            MultimodalAgent(**self.agent_config)
-            for _ in range(min(self.max_concurrent, len(samples)))
-        ]
-        
+        # Use pre-created agent pool (no need to create new agents)
         # Semaphore for concurrency control
         semaphore = asyncio.Semaphore(self.max_concurrent)
         completed = 0
@@ -279,9 +292,9 @@ class Runner:
                     logger.info(f"{status} [{completed}/{total}] Sample {result['idx']}: {result['predicted']}")
                 return result
         
-        # Run all tasks with agent cycling
+        # Run all tasks with agent cycling (reuse agent pool)
         from itertools import cycle
-        agent_cycle = cycle(agents)
+        agent_cycle = cycle(self.agents)
         results = await asyncio.gather(*[
             run_with_semaphore(sample, next(agent_cycle))
             for sample in samples
@@ -388,7 +401,14 @@ class Runner:
         # Load dataset
         dataset = self.load_dataset()
         
-        # Process in batches
+        # Prepare output paths
+        results_path = self.output_dir / "results.jsonl"
+        
+        # Clear previous results (start fresh)
+        if results_path.exists():
+            results_path.unlink()
+        
+        # Process in batches with incremental saving
         all_results = []
         for batch_idx in range(0, len(dataset), self.batch_size):
             batch = dataset[batch_idx:batch_idx + self.batch_size]
@@ -396,22 +416,20 @@ class Runner:
             
             results = await self.run_batch(batch, batch_id)
             all_results.extend(results)
+            
+            # Incremental save: append batch results to JSONL
+            with open(results_path, 'a', encoding='utf-8') as f:
+                for r in results:
+                    f.write(json.dumps(r, ensure_ascii=False) + '\n')
+            
+            if self.verbose:
+                logger.info(f"💾 Saved batch {batch_id} results to {results_path}")
         
-        # Sort by idx
+        # Sort by idx (read back from file for consistency)
         all_results.sort(key=lambda x: x['idx'])
         
         # Compute statistics
         stats = self.compute_stats(all_results)
-        
-        # Save results (remove full response for clean output)
-        results_clean = [
-            {k: v for k, v in r.items() if k != 'response'}
-            for r in all_results
-        ]
-        
-        results_path = self.output_dir / "results.json"
-        with open(results_path, 'w', encoding='utf-8') as f:
-            json.dump(results_clean, f, indent=2, ensure_ascii=False)
         
         # Save statistics
         stats_path = self.output_dir / "stats.json"
