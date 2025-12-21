@@ -92,6 +92,7 @@ def process_and_save(dataset, jsonl_path: Path, image_dir: Path, num_proc: int =
         process_one,
         with_indices=True,
         num_proc=num_proc,
+        remove_columns=dataset.column_names,  # Remove original columns to avoid serialization errors
         desc="Processing samples"
     )
     
