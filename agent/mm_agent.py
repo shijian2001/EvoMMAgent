@@ -140,11 +140,15 @@ class MultimodalAgent(BasicAgent):
             System prompt string
         """
         if not self.tool_bank:
-            # Simple prompt without tools
-            if self.use_zh:
-                return "你是一个智能助手，可以理解和处理文本、图像和视频。"
-            else:
-                return "You are an intelligent assistant that can understand and process text, images, and videos."
+            # Simple prompt without tools (for direct query)
+            base_prompt = (
+                "你是一个智能助手，可以理解和处理文本、图像和视频。\n\n"
+                f"请直接回答问题。最终答案格式：{self.special_answer_token} [你的答案]"
+            ) if self.use_zh else (
+                "You are an intelligent assistant that can understand and process text, images, and videos.\n\n"
+                f"Please answer the question directly. Final answer format: {self.special_answer_token} [your answer]"
+            )
+            return base_prompt
         
         # Get tool information
         tool_names, tool_descriptions = self._get_tool_description()
@@ -157,6 +161,7 @@ class MultimodalAgent(BasicAgent):
             "special_func_token": self.special_func_token,
             "special_args_token": self.special_args_token,
             "special_obs_token": self.special_obs_token,
+            "special_answer_token": self.special_answer_token,
         }
         
         # Render template

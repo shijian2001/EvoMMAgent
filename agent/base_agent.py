@@ -32,6 +32,7 @@ class BasicAgent(ABC):
             special_args_token: str = "\nAction Input:",
             special_obs_token: str = "\nObservation:",
             special_think_token: str = "Thought:",
+            special_answer_token: str = "\nAnswer:",
             preload_devices: Optional[List[str]] = None,
     ):
         """Initialize the agent with tools and configuration.
@@ -49,6 +50,7 @@ class BasicAgent(ABC):
             special_args_token: Token to mark action input
             special_obs_token: Token to mark observations
             special_think_token: Token to mark thinking/reasoning section
+            special_answer_token: Token to mark final answer
             preload_devices: Devices for preloading models, e.g., ["cuda:0", "cuda:1"] (default: auto-detect all GPUs)
         """
         self.name = name
@@ -79,6 +81,7 @@ class BasicAgent(ABC):
         self.special_func_token = special_func_token
         self.special_args_token = special_args_token
         self.special_obs_token = special_obs_token
+        self.special_answer_token = special_answer_token
 
     def _init_tool(self, tool: Union[str, dict, BasicTool]):
         """Initialize and register a tool to the agent's tool bank.
