@@ -1,14 +1,57 @@
-"""Preprocess BLINK dataset to unified parquet format."""
+"""Preprocess BLINK dataset to JSONL + image folder format.
+
+Processing pipeline:
+1. load_dataset() - Load source dataset
+2. extract_images() - Extract PIL images from sample
+3. convert_sample() - Convert sample to unified format
+4. process_and_save() - Coordinate saving images and JSONL
+"""
 
 import argparse
+import json
 from pathlib import Path
 
 import datasets
-from datasets import Features, Sequence, Value, Image
 
 
-def parse_answer(answer_raw: str, choices: list) -> str:
-    """Map answer like '(A)' or 'A' to actual choice text."""
+# ============ Dataset-specific functions (customize per dataset) ============
+
+def load_dataset(input_dir: str):
+    """Load BLINK dataset - concatenate all validation configs."""
+    configs = datasets.get_dataset_config_names(input_dir)
+    print(f"📂 Found {len(configs)} configs")
+    
+    combined = datasets.concatenate_datasets([
+        datasets.load_dataset(input_dir, name=cfg, split="val")
+        for cfg in configs
+    ])
+    print(f"📊 Total: {len(combined)} samples")
+    return combined
+
+
+def extract_images(example: dict) -> list:
+    """Extract PIL images from BLINK sample."""
+    return [example[f"image_{i}"] for i in range(1, 5) 
+            if example[f"image_{i}"] is not None]
+
+
+def convert_sample(example: dict, idx: int, image_paths: list[str]) -> dict:
+    """Convert BLINK sample to unified format."""
+    return {
+        "idx": idx,
+        "images": image_paths,
+        "dataset": "BLINK",
+        "type": "multi-choice",
+        "sub_task": example["sub_task"],
+        "question": example["question"],
+        "choices": example["choices"],
+        "answer": _parse_answer(example["answer"], example["choices"]),
+        "prompt": example["prompt"],
+    }
+
+
+def _parse_answer(answer_raw: str, choices: list) -> str:
+    """Parse BLINK answer format: '(A)' or 'A' -> actual choice text."""
     if answer_raw == "hidden":
         return ""
     letter = answer_raw.strip("()").upper()
@@ -16,67 +59,54 @@ def parse_answer(answer_raw: str, choices: list) -> str:
     return choices[idx] if 0 <= idx < len(choices) else answer_raw
 
 
-def process_fn(example: dict, idx: int) -> dict:
-    """Convert a BLINK sample to unified format."""
-    images = [example[f"image_{i}"] for i in range(1, 5) if example[f"image_{i}"] is not None]
+# ============ Generic processing functions (reusable across datasets) ============
 
-    return {
-        "idx": idx,
-        "images": images,
-        "dataset": "BLINK",
-        "type": "multi-choice",
-        "sub_task": example["sub_task"],
-        "question": example["question"],
-        "choices": example["choices"],
-        "answer": parse_answer(example["answer"], example["choices"]),
-        "prompt": example["prompt"],
-    }
+def save_images(images: list, idx: int, image_dir: Path) -> list[str]:
+    """Save images to {idx:05d}/{img_idx:05d}.png and return relative paths."""
+    image_paths = []
+    sample_dir = image_dir / f"{idx:05d}"
+    sample_dir.mkdir(exist_ok=True)
+    
+    for img_idx, img in enumerate(images):
+        rel_path = f"{idx:05d}/{img_idx:05d}.png"
+        full_path = image_dir / rel_path
+        img.save(full_path)
+        image_paths.append(rel_path)
+    
+    return image_paths
 
+
+def process_and_save(dataset, jsonl_path: Path, image_dir: Path):
+    """Process dataset and save to JSONL + image folder."""
+    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+    image_dir.mkdir(parents=True, exist_ok=True)
+    
+    with open(jsonl_path, 'w', encoding='utf-8') as f:
+        for idx, example in enumerate(dataset):
+            images = extract_images(example)
+            image_paths = save_images(images, idx, image_dir)
+            record = convert_sample(example, idx, image_paths)
+            
+            f.write(json.dumps(record, ensure_ascii=False) + '\n')
+            
+            if (idx + 1) % 100 == 0:
+                print(f"  Processed {idx + 1}/{len(dataset)} samples...")
+    
+    print(f"✅ Saved {len(dataset)} records to {jsonl_path}")
+    print(f"✅ Saved images to {image_dir}")
+
+
+# ============ Main entry ============
 
 def main():
-    parser = argparse.ArgumentParser(description="Preprocess BLINK dataset to unified format")
+    parser = argparse.ArgumentParser(description="Preprocess BLINK to JSONL + image folder")
     parser.add_argument("input_dir", type=str, help="Path to BLINK dataset directory")
-    parser.add_argument("output_dir", type=str, help="Output directory for parquet file")
-    parser.add_argument("--num_proc", type=int, default=8, help="Number of processes for parallel processing")
+    parser.add_argument("--jsonl_path", type=str, required=True, help="Output JSONL file path")
+    parser.add_argument("--image_dir", type=str, required=True, help="Output image folder path")
     args = parser.parse_args()
-
-    # Load all validation splits and concatenate
-    configs = datasets.get_dataset_config_names(args.input_dir)
-    print(f"📂 Found {len(configs)} configs")
-
-    combined = datasets.concatenate_datasets([
-        datasets.load_dataset(args.input_dir, name=cfg, split="val")
-        for cfg in configs
-    ])
-    print(f"📊 Total: {len(combined)} samples")
-
-    # Define target schema
-    features = Features({
-        "idx": Value("int64"),
-        "images": Sequence(Image()),
-        "dataset": Value("string"),
-        "type": Value("string"),
-        "sub_task": Value("string"),
-        "question": Value("string"),
-        "choices": Sequence(Value("string")),
-        "answer": Value("string"),
-        "prompt": Value("string"),
-    })
-
-    # Process with map and cast to target schema
-    processed = combined.map(
-        process_fn,
-        with_indices=True,
-        remove_columns=combined.column_names,
-        num_proc=args.num_proc,
-    ).cast(features)
-
-    # Save to parquet
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "eval_data.parquet"
-    processed.to_parquet(str(output_path))
-    print(f"✅ Saved {len(processed)} samples to {output_path}")
+    
+    dataset = load_dataset(args.input_dir)
+    process_and_save(dataset, Path(args.jsonl_path), Path(args.image_dir))
 
 
 if __name__ == "__main__":
