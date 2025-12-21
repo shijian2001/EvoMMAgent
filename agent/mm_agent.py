@@ -395,20 +395,15 @@ class MultimodalAgent(BasicAgent):
                         output_type = None
                         observation_data = None
                 
-                if verbose:
-                    logger.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
-                    logger.info(f"   Input: {tool_args}")
-                    logger.info(f"   Output: {observation}")
-                
-                # Log action to memory
-                if memory:
-                    try:
-                        # Use original properties (with IDs) for trace
-                        properties = original_properties if original_properties is not None else (
-                            json.loads(tool_args) if isinstance(tool_args, str) else tool_args
-                        )
-                        
-                        if output_object and output_type:
+                # Handle output_object (images/videos produced by tools)
+                if output_object and output_type:
+                    if memory:
+                        # With memory: save to file and generate ID
+                        try:
+                            properties = original_properties if original_properties is not None else (
+                                json.loads(tool_args) if isinstance(tool_args, str) else tool_args
+                            )
+                            
                             # Generate description before logging
                             from tool.base_tool import TOOL_REGISTRY
                             tool_instance = TOOL_REGISTRY.get(tool_name)
@@ -430,7 +425,7 @@ class MultimodalAgent(BasicAgent):
                                 description=description
                             )
                             
-                            # Format observation for LLM
+                            # Format observation for LLM (with ID reference)
                             if output_id:
                                 obs_parts = [f"Saved as {output_id}: {description}"]
                                 
@@ -442,16 +437,57 @@ class MultimodalAgent(BasicAgent):
                                 observation = ". ".join(obs_parts) if len(obs_parts) > 1 else obs_parts[0]
                             else:
                                 observation = f"Output Saved"
-                        else:
-                            # No multimodal output - observation already formatted
-                            memory.log_action(
-                                tool=tool_name,
-                                properties=properties,
-                                observation=observation
-                            )
+                        except Exception as e:
+                            if verbose:
+                                logger.warning(f"Failed to log action to memory: {e}")
+                            observation = self._format_observation(observation_data, tool_name) if observation_data else "Output generated"
+                    else:
+                        # Without memory: don't save, only format observation data
+                        observation = self._format_observation(observation_data, tool_name) if observation_data else "Output generated"
+                    
+                    # Add output object to context (both memory and non-memory modes)
+                    conversation_context.append({
+                        "type": "text",
+                        "text": f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
+                    })
+                    conversation_context.append({
+                        "type": output_type,
+                        output_type: output_object  # "image": PIL.Image or "video": video_obj
+                    })
+                    
+                elif memory:
+                    # No output_object, but memory enabled: log text-only action
+                    try:
+                        properties = original_properties if original_properties is not None else (
+                            json.loads(tool_args) if isinstance(tool_args, str) else tool_args
+                        )
+                        memory.log_action(
+                            tool=tool_name,
+                            properties=properties,
+                            observation=observation
+                        )
                     except Exception as e:
                         if verbose:
                             logger.warning(f"Failed to log action to memory: {e}")
+                    
+                    # Add to context
+                    context_text = f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
+                    conversation_context.append({
+                        "type": "text",
+                        "text": context_text
+                    })
+                else:
+                    # No output_object and no memory: just add text to context
+                    context_text = f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
+                    conversation_context.append({
+                        "type": "text",
+                        "text": context_text
+                    })
+                
+                if verbose:
+                    logger.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
+                    logger.info(f"   Input: {tool_args}")
+                    logger.info(f"   Output: {observation}")
                 
                 # Record history
                 history.append({
@@ -460,12 +496,6 @@ class MultimodalAgent(BasicAgent):
                     "action": tool_name,
                     "action_input": tool_args,
                     "observation": observation,
-                })
-                
-                context_text = f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
-                conversation_context.append({
-                    "type": "text",
-                    "text": context_text
                 })
                 
             else:
