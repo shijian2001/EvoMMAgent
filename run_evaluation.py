@@ -51,8 +51,8 @@ async def main():
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
         output_dir="eval_results/blink/qwen2.5_72b/ours",
-        batch_size=1,
-        max_concurrent=1,
+        batch_size=100,
+        max_concurrent=100,
         verbose=True
     )
     
