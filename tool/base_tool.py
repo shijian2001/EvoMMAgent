@@ -147,6 +147,10 @@ class ModelBasedTool(BasicTool):
             # Restore tokenizer if cached
             if "tokenizer" in cached_objects:
                 self.tokenizer = cached_objects["tokenizer"]
+            
+            # Restore preprocess if cached
+            if "preprocess" in cached_objects:
+                self.preprocess = cached_objects["preprocess"]
         else:
             # No cache, load from scratch
             if device is None:
@@ -170,6 +174,9 @@ class ModelBasedTool(BasicTool):
                 
                 if hasattr(self, 'tokenizer') and self.tokenizer is not None:
                     objects_to_cache["tokenizer"] = self.tokenizer
+                
+                if hasattr(self, 'preprocess') and self.preprocess is not None:
+                    objects_to_cache["preprocess"] = self.preprocess
                 
                 cache_objects(self.model_id, self.device, objects_to_cache, self.name)
 
