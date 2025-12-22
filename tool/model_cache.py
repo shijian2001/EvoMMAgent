@@ -133,29 +133,44 @@ def preload_tools(tool_bank: Optional[List[str]] = None, devices: Optional[List[
         else:
             devices = ["cpu"]
     
-    logger.info(f"🚀 Preloading {len(model_to_tool)} models across {len(devices)} device(s)...")
-    
+    # Filter out already cached models
+    models_to_load = []
     model_device_map = {}
-    for idx, (model_id, tool_cls) in enumerate(sorted(model_to_tool.items())):
-        device = devices[idx % len(devices)]
-        try:
-            temp_tool = tool_cls()
-            temp_tool.load_model(device)
-            if temp_tool.is_loaded and temp_tool.model is not None:
-                # Auto-discover and cache all model-related objects
-                if hasattr(temp_tool, '_get_cacheable_objects'):
-                    objects_to_cache = temp_tool._get_cacheable_objects()
-                else:
-                    # Fallback for non-ModelBasedTool (shouldn't happen)
-                    objects_to_cache = {"model": temp_tool.model}
-                
-                cache_objects(model_id, device, objects_to_cache, tool_name="preload")
+    
+    with _cache_lock:
+        for idx, (model_id, tool_cls) in enumerate(sorted(model_to_tool.items())):
+            device = devices[idx % len(devices)]
+            cache_key = f"{model_id}:{device}"
+            
+            if cache_key in _model_cache:
+                # Already cached, skip loading
                 model_device_map[model_id] = device
-                logger.info(f"  ✓ {model_id:20s} -> {device} (cached: {list(objects_to_cache.keys())})")
             else:
-                logger.error(f"  ✗ {model_id:20s} -> {device}")
-        except Exception as e:
-            logger.error(f"  ✗ {model_id:20s} -> {device} ({e})")
+                # Need to load
+                models_to_load.append((model_id, tool_cls, device))
+    
+    # Only log and load if there are new models
+    if models_to_load:
+        logger.info(f"🚀 Preloading {len(models_to_load)} models across {len(devices)} device(s)...")
+        
+        for model_id, tool_cls, device in models_to_load:
+            try:
+                temp_tool = tool_cls()
+                temp_tool.load_model(device)
+                if temp_tool.is_loaded and temp_tool.model is not None:
+                    # Auto-discover and cache all model-related objects
+                    if hasattr(temp_tool, '_get_cacheable_objects'):
+                        objects_to_cache = temp_tool._get_cacheable_objects()
+                    else:
+                        objects_to_cache = {"model": temp_tool.model}
+                    
+                    cache_objects(model_id, device, objects_to_cache, tool_name="preload")
+                    model_device_map[model_id] = device
+                    logger.info(f"  ✓ {model_id:20s} -> {device} (cached: {list(objects_to_cache.keys())})")
+                else:
+                    logger.error(f"  ✗ {model_id:20s} -> {device}")
+            except Exception as e:
+                logger.error(f"  ✗ {model_id:20s} -> {device} ({e})")
     
     return model_device_map
 
