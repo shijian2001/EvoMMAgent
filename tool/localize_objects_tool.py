@@ -42,9 +42,7 @@ class LocalizeObjectsTool(ModelBasedTool):
                 "error": "objects must be a non-empty list of strings"
             }
         try:
-            image_path_full = image_processing(image_path, return_path=True)
-            original_image = image_processing(image_path)
-            image = Image.open(image_path_full).convert("RGB")
+            image = image_processing(image_path)
             text_labels = [objects]
             inputs = self.processor(images=image, text=text_labels, return_tensors="pt").to(self.device)
             with torch.no_grad():
@@ -83,7 +81,7 @@ class LocalizeObjectsTool(ModelBasedTool):
             
             visualize_tool = VisualizeRegionsOnImageTool()
             visualize_params = {
-                "image_path": image_path_full,
+                "image": image_path,
                 "regions": [{"bbox": r["bbox"], "label": r["label"]} for r in regions]
             }
             output_image_result = visualize_tool.call(visualize_params)
