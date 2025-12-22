@@ -35,7 +35,7 @@ async def main():
             "get_image2texts_similarity", 
             "get_text2images_similarity"
         ],
-        "model_name": "qwen2.5-vl-7b-instruct",
+        "model_name": "qwen2.5-vl-72b-instruct",
         "max_tokens": 2048,
         "temperature": 0.0,  # Use 0 for deterministic evaluation
         "enable_memory": True,
@@ -49,7 +49,7 @@ async def main():
         jsonl_path="data/eval/image/BLINK/blink_data.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/blink/qwen2.5_7b/ours",
+        output_dir="eval_results/blink/qwen2.5_72b/ours",
         batch_size=1,
         max_concurrent=1,
         verbose=True
