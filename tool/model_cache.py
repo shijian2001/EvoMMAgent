@@ -106,21 +106,33 @@ def preload_tools(tool_bank: Optional[List[str]] = None, devices: Optional[List[
     """Preload models for tools, distribute across GPUs.
     
     Now caches all model-related objects (model, processor, image_processor, etc.)
+    Models are loaded in the order specified in tool_bank to allow user control over GPU assignment.
     """
     from tool.base_tool import TOOL_REGISTRY
     
     if tool_bank is None:
         tools_to_load = TOOL_REGISTRY
+        tool_order = sorted(TOOL_REGISTRY.keys())  # Fallback to alphabetical if no tool_bank
     else:
         tools_to_load = {name: TOOL_REGISTRY[name] for name in tool_bank if name in TOOL_REGISTRY}
+        tool_order = [name for name in tool_bank if name in TOOL_REGISTRY]  # Preserve order
         missing = [name for name in tool_bank if name not in TOOL_REGISTRY]
         if missing:
             logger.warning(f"Tools not found: {missing}")
     
+    # Build model_to_tool mapping while preserving order
     model_to_tool = {}
-    for tool_name, tool_cls in tools_to_load.items():
+    model_order = []  # Track order of model_ids
+    seen_models = set()
+    
+    for tool_name in tool_order:
+        tool_cls = tools_to_load[tool_name]
         if hasattr(tool_cls, 'model_id') and tool_cls.model_id:
-            model_to_tool[tool_cls.model_id] = tool_cls
+            model_id = tool_cls.model_id
+            if model_id not in seen_models:
+                model_to_tool[model_id] = tool_cls
+                model_order.append(model_id)
+                seen_models.add(model_id)
     
     if not model_to_tool:
         logger.info("No models to preload")
@@ -138,7 +150,9 @@ def preload_tools(tool_bank: Optional[List[str]] = None, devices: Optional[List[
     model_device_map = {}
     
     with _cache_lock:
-        for idx, (model_id, tool_cls) in enumerate(sorted(model_to_tool.items())):
+        # Use model_order to preserve tool_bank order
+        for idx, model_id in enumerate(model_order):
+            tool_cls = model_to_tool[model_id]
             device = devices[idx % len(devices)]
             cache_key = f"{model_id}:{device}"
             
