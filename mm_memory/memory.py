@@ -58,8 +58,9 @@ class Memory:
     def _get_next_task_id(cls) -> str:
         """Thread-safe task ID generation."""
         with cls._counter_lock:
+            task_id = cls._task_counter
             cls._task_counter += 1
-            return f"{cls._task_counter:06d}"
+            return f"{task_id:06d}"
     
     def start_task(self, question: str) -> str:
         """Start a new task.
