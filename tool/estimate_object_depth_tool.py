@@ -21,7 +21,7 @@ class EstimateObjectDepthTool(BasicTool):
         "properties": {
             "image": {
                 "type": "string",
-                "description": "The image to get the depth from"
+                "description": "Image ID (e.g., 'img_0')"
             },
             "object": {
                 "type": "string",

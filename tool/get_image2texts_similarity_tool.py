@@ -23,7 +23,7 @@ class GetImageToTextsSimilarityTool(ModelBasedTool):
         "properties": {
             "image": {
                 "type": "string",
-                "description": "The reference image"
+                "description": "Image ID (e.g., 'img_0')"
             },
             "texts": {
                 "type": "array",

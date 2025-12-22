@@ -26,7 +26,7 @@ class OCRTool(ModelBasedTool):
         "properties": {
             "image": {
                 "type": "string",
-                "description": "The image to extract texts from"
+                "description": "Image ID (e.g., 'img_0')"
             }
         },
         "required": ["image"]

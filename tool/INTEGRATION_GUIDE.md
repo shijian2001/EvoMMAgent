@@ -59,6 +59,25 @@ preload_tools(
 # 之后创建的工具实例会复用预加载的模型
 ```
 
+## ⚠️ 重要：Image 参数的双层设计
+
+**对外接口**：用户传 ID（`"img_0"`），参数描述写 `"Image ID (e.g., 'img_0')"`  
+**内部实现**：工具收路径（`"/path/to/image.png"`），通过 `memory.resolve_ids()` 自动转换
+
+```python
+# 对外：用户/Agent 传 ID
+{"image": "img_0"}  
+
+# ↓ Memory 自动转换
+
+# 内部：工具收路径
+image_path = params_dict["image"]  # 已是路径，直接用 image_processing() 加载
+```
+
+**不要在工具内部手动解析 ID**，Memory 系统已自动处理。
+
+---
+
 ## 1. 非模型工具 (Non-Model Tool)
 
 适用于：计算器、图像处理、API 调用等不需要加载模型的工具。
@@ -114,11 +133,11 @@ class OCRTool(ModelBasedTool):
     parameters = {
         "type": "object",
         "properties": {
-            "image": {"type": "string", "description": "图像路径"},
+            "image": {"type": "string", "description": "Image ID (e.g., 'img_0')"},
         },
         "required": ["image"]
     }
-    example = '{"image": "image-0"}'
+    example = '{"image": "img_0"}'
 
     def load_model(self, device: str):
         """加载模型并设置到 self.model"""

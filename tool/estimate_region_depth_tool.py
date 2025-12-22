@@ -24,7 +24,7 @@ class EstimateRegionDepthTool(ModelBasedTool):
         "properties": {
             "image": {
                 "type": "string",
-                "description": "Path to the image"
+                "description": "Image ID (e.g., 'img_0')"
             },
             "bbox": {
                 "type": "array",

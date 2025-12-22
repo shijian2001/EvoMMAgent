@@ -18,7 +18,7 @@ class LocalizeObjectsTool(ModelBasedTool):
     parameters = {
         "type": "object",
         "properties": {
-            "image": {"type": "string", "description": "The image to localize objects/regions in"},
+            "image": {"type": "string", "description": "Image ID (e.g., 'img_0')"},
             "objects": {"type": "array", "items": {"type": "string"}, "description": "A list of object names to localize. e.g. ['dog', 'cat', 'person']. The model might not be able to detect rare objects or objects with complex descriptions."}
         },
         "required": ["image", "objects"]

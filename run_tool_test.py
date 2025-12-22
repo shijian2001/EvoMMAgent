@@ -212,37 +212,78 @@ async def test():
     print(f"Input image: {IMG} -> {img_id}")
     
     # Test 1: zoom_in
-    await test_tool(
+    zoomed_img_id = await test_tool(
         "zoom_in",
         {"image": img_id, "bbox": [0.2, 0.2, 0.8, 0.8], "zoom_factor": 2.0}
     )
     
-    # Test 2: localize_objects
+    # Test 2: crop
+    cropped_img_id = await test_tool(
+        "crop",
+        {"image": img_id, "bbox": [0.1, 0.3, 0.6, 0.7]}
+    )
+    
+    # Test 3: calculator
+    await test_tool(
+        "calculator",
+        {"expression": "123 * 456 + 789"}
+    )
+    
+    # Test 4: ocr
+    await test_tool(
+        "ocr",
+        {"image": img_id}
+    )
+    
+    # Test 5: localize_objects
     await test_tool(
         "localize_objects",
         {"image": img_id, "objects": ["bread", "orange"]}
     )
     
-    # Test 3: estimate_region_depth
+    # Test 6: estimate_region_depth
     await test_tool(
         "estimate_region_depth",
         {"image": img_id, "bbox": [0.1, 0.2, 0.5, 0.6], "mode": "mean"}
     )
     
-    # Test 4: estimate_object_depth
+    # Test 7: estimate_object_depth
     await test_tool(
         "estimate_object_depth",
         {"image": img_id, "object": "orange"}
     )
     
-    # ========================================
-    # Add your own tool tests here!
-    # Example:
-    # await test_tool(
-    #     "your_tool_name",
-    #     {"image": img_id, "param1": value1}
-    # )
-    # ========================================
+    # Test 8: visualize_regions
+    await test_tool(
+        "visualize_regions",
+        {
+            "image": img_id,
+            "regions": [
+                {"bbox": [0.1, 0.1, 0.4, 0.4], "label": "Region A"},
+                {"bbox": [0.6, 0.6, 0.9, 0.9], "label": "Region B"}
+            ]
+        }
+    )
+    
+    # Test 9: get_image2texts_similarity
+    await test_tool(
+        "get_image2texts_similarity",
+        {"image": img_id, "texts": ["a cat", "a dog", "food"]}
+    )
+    
+    # Test 10: get_image2images_similarity (if we have multiple images)
+    if zoomed_img_id and cropped_img_id:
+        await test_tool(
+            "get_image2images_similarity",
+            {"image": img_id, "other_images": [zoomed_img_id, cropped_img_id]}
+        )
+    
+    # Test 11: get_text2images_similarity (if we have multiple images)
+    if zoomed_img_id and cropped_img_id:
+        await test_tool(
+            "get_text2images_similarity",
+            {"text": "a zoomed in image", "images": [img_id, zoomed_img_id, cropped_img_id]}
+        )
     
     # Save memory trace
     trace_file = OUTPUT_DIR / "memory_trace.json"

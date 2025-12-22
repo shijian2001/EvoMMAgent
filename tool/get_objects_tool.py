@@ -22,7 +22,7 @@ class GetObjectsTool(ModelBasedTool):
         "properties": {
             "image": {
                 "type": "string",
-                "description": "Path to the image to get objects from"
+                "description": "Image ID (e.g., 'img_0')"
             }
         },
         "required": ["image"]

@@ -2,6 +2,7 @@
 
 from typing import Union, Dict
 from tool.base_tool import BasicTool, register_tool
+from tool.utils.image_utils import image_processing
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -20,9 +21,9 @@ class VisualizeRegionsOnImageTool(BasicTool):
     parameters = {
         "type": "object",
         "properties": {
-            "image_path": {
+            "image": {
                 "type": "string",
-                "description": "Path to the input image file"
+                "description": "Image ID (e.g., 'img_0')"
             },
             "regions": {
                 "type": "array",
@@ -54,33 +55,33 @@ class VisualizeRegionsOnImageTool(BasicTool):
                 "description": "Width of the bounding box lines (default: 4)"
             }
         },
-        "required": ["image_path", "regions"]
+        "required": ["image", "regions"]
     }
-    example = '{"image_path": "/path/to/image.jpg", "regions": [{"bbox": [0.1, 0.1, 0.5, 0.5], "label": "Object A"}, {"bbox": [0.6, 0.6, 0.9, 0.9], "label": "Object B"}]}'
+    example = '{"image": "img_0", "regions": [{"bbox": [0.1, 0.1, 0.5, 0.5], "label": "Object A"}, {"bbox": [0.6, 0.6, 0.9, 0.9], "label": "Object B"}]}'
     
     def call(self, params: Union[str, Dict]) -> str:
         """Execute the visualization operation.
         
         Args:
-            params: Parameters containing image_path, regions, and optional styling
+            params: Parameters containing image, regions, and optional styling
             
         Returns:
             PIL.Image object with visualized regions
         """
         if not PIL_AVAILABLE:
-            return "Error: PIL (Pillow) is not installed. Please install it with: pip install Pillow"
+            return {"error": "PIL (Pillow) is not installed. Please install it with: pip install Pillow"}
         
         # Validate and parse parameters
         params_dict = self.parse_params(params)
         
-        image_path = params_dict["image_path"]
+        image_path = params_dict["image"]
         regions = params_dict["regions"]
         color = params_dict.get("color", "yellow")
         width = params_dict.get("width", 4)
         
         try:
             # Load image
-            image = Image.open(image_path)
+            image = image_processing(image_path)
             W, H = image.size
             
             # Create a copy to draw on
@@ -141,7 +142,7 @@ class VisualizeRegionsOnImageTool(BasicTool):
     
     def generate_description(self, properties, observation):
         """Generate description for visualized regions."""
-        img = properties.get("image_path", "image")
+        img = properties.get("image", "image")
         regions = properties.get("regions", [])
         num_regions = len(regions) if isinstance(regions, list) else 0
         return f"Visualized {num_regions} regions on {img}"

@@ -24,7 +24,7 @@ class DetectFacesTool(ModelBasedTool):
         "properties": {
             "image": {
                 "type": "string",
-                "description": "The image to detect faces from"
+                "description": "Image ID (e.g., 'img_0')"
             }
         },
         "required": ["image"]
@@ -85,7 +85,6 @@ class DetectFacesTool(ModelBasedTool):
             import torch
             
             # Load and process image
-            image_path_full = image_processing(image_path, return_path=True)
             image = image_processing(image_path)
             W, H = image.size
             
@@ -117,7 +116,7 @@ class DetectFacesTool(ModelBasedTool):
             # Visualize regions on image
             visualize_tool = VisualizeRegionsOnImageTool()
             visualize_params = {
-                "image_path": image_path_full,
+                "image": image_path,
                 "regions": regions
             }
             output_image_result = visualize_tool.call(visualize_params)
