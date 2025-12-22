@@ -142,24 +142,12 @@ def preload_tools(tool_bank: Optional[List[str]] = None, devices: Optional[List[
             temp_tool = tool_cls()
             temp_tool.load_model(device)
             if temp_tool.is_loaded and temp_tool.model is not None:
-                # Cache all model-related objects
-                objects_to_cache = {"model": temp_tool.model}
-                
-                # Add processor if exists
-                if hasattr(temp_tool, 'processor') and temp_tool.processor is not None:
-                    objects_to_cache["processor"] = temp_tool.processor
-                
-                # Add image_processor if exists
-                if hasattr(temp_tool, 'image_processor') and temp_tool.image_processor is not None:
-                    objects_to_cache["image_processor"] = temp_tool.image_processor
-                
-                # Add tokenizer if exists
-                if hasattr(temp_tool, 'tokenizer') and temp_tool.tokenizer is not None:
-                    objects_to_cache["tokenizer"] = temp_tool.tokenizer
-                
-                # Add preprocess if exists
-                if hasattr(temp_tool, 'preprocess') and temp_tool.preprocess is not None:
-                    objects_to_cache["preprocess"] = temp_tool.preprocess
+                # Auto-discover and cache all model-related objects
+                if hasattr(temp_tool, '_get_cacheable_objects'):
+                    objects_to_cache = temp_tool._get_cacheable_objects()
+                else:
+                    # Fallback for non-ModelBasedTool (shouldn't happen)
+                    objects_to_cache = {"model": temp_tool.model}
                 
                 cache_objects(model_id, device, objects_to_cache, tool_name="preload")
                 model_device_map[model_id] = device

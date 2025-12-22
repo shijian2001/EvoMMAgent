@@ -23,7 +23,16 @@ bash ./scripts/setup_env.sh ~/.virtualenvs/evommagent/dev
 source scripts/activate_env.sh ~/.virtualenvs/evommagent/dev
 ```
 
-### 4. Install package
+### 4. Install system dependencies
+
+Some tools require additional system libraries:
+
+```bash
+# Required for OCR tool (OpenCV/EasyOCR)
+sudo apt-get install -y libgl1-mesa-glx
+```
+
+### 5. Install package
 
 ```bash
 # Basic installation
@@ -39,7 +48,7 @@ uv sync --active --extra vl
 uv sync --active --all-extras
 ```
 
-### 5. Configuration for video processing (VL only)
+### 6. Configuration for video processing (VL only)
 
 Set the video reader backend by exporting the environment variable:
 
@@ -54,7 +63,7 @@ export FORCE_QWENVL_VIDEO_READER=decord
 export FORCE_QWENVL_VIDEO_READER=torchcodec
 ```
 
-### 6. Add and remove dependencies
+### 7. Add and remove dependencies
 
 ```bash
 # Add a new package
@@ -64,13 +73,13 @@ uv add --active [package-name]
 uv remove --active [package-name]
 ```
 
-### 7. Deactivate environment
+### 8. Deactivate environment
 
 ```bash
 deactivate
 ```
 
-### 8. Switch to different environment
+### 9. Switch to different environment
 
 ```bash
 # Deactivate current environment

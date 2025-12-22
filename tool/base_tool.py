@@ -111,6 +111,43 @@ class ModelBasedTool(BasicTool):
         """
         raise NotImplementedError(f"Tool {self.name} must implement load_model()")
 
+    def _get_cacheable_objects(self) -> Dict[str, Any]:
+        """Auto-discover model-related objects to cache.
+        
+        Automatically caches all non-private, non-primitive attributes except metadata.
+        Tools don't need to manually specify what to cache.
+        
+        Returns:
+            Dict of objects to cache (e.g., {"model": ..., "processor": ...})
+        """
+        # Exclude list: metadata and state attributes
+        exclude_attrs = {
+            # Class-level metadata
+            'name', 'description_en', 'description_zh', 
+            'parameters', 'example', 'model_id',
+            # Instance metadata
+            'tool_name', 'name_for_model', 'name_for_human',
+            'tool_description', 'tool_example',
+            # Configuration
+            'cfg', 'use_zh',
+            # State attributes
+            'device', 'is_loaded',
+        }
+        
+        # Exclude primitive types
+        exclude_types = (str, int, float, bool, type(None))
+        
+        cacheable = {}
+        for key, value in vars(self).items():
+            # Skip private attributes, excluded metadata, and primitive types
+            if (key.startswith('_') 
+                or key in exclude_attrs 
+                or isinstance(value, exclude_types)):
+                continue
+            cacheable[key] = value
+        
+        return cacheable
+    
     def unload_model(self) -> None:
         """Release model reference."""
         if self.is_loaded and self.model_id:
@@ -131,26 +168,11 @@ class ModelBasedTool(BasicTool):
         # Try to get all cached objects
         cached_objects, cached_device = get_cached_objects(self.model_id, device)
         if cached_objects is not None:
-            # Restore all cached objects
-            self.model = cached_objects.get("model")
+            # Restore all cached objects automatically
+            for key, value in cached_objects.items():
+                setattr(self, key, value)
             self.device = cached_device
             self.is_loaded = True
-            
-            # Restore processor if cached
-            if "processor" in cached_objects:
-                self.processor = cached_objects["processor"]
-            
-            # Restore image_processor if cached
-            if "image_processor" in cached_objects:
-                self.image_processor = cached_objects["image_processor"]
-            
-            # Restore tokenizer if cached
-            if "tokenizer" in cached_objects:
-                self.tokenizer = cached_objects["tokenizer"]
-            
-            # Restore preprocess if cached
-            if "preprocess" in cached_objects:
-                self.preprocess = cached_objects["preprocess"]
         else:
             # No cache, load from scratch
             if device is None:
@@ -163,21 +185,8 @@ class ModelBasedTool(BasicTool):
             self.load_model(device)
             
             if self.is_loaded and self.model is not None:
-                # Cache all model-related objects
-                objects_to_cache = {"model": self.model}
-                
-                if hasattr(self, 'processor') and self.processor is not None:
-                    objects_to_cache["processor"] = self.processor
-                
-                if hasattr(self, 'image_processor') and self.image_processor is not None:
-                    objects_to_cache["image_processor"] = self.image_processor
-                
-                if hasattr(self, 'tokenizer') and self.tokenizer is not None:
-                    objects_to_cache["tokenizer"] = self.tokenizer
-                
-                if hasattr(self, 'preprocess') and self.preprocess is not None:
-                    objects_to_cache["preprocess"] = self.preprocess
-                
+                # Auto-discover and cache all model-related objects
+                objects_to_cache = self._get_cacheable_objects()
                 cache_objects(self.model_id, self.device, objects_to_cache, self.name)
 
     def call(self, params: Union[str, Dict]) -> Any:
