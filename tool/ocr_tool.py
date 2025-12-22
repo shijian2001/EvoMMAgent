@@ -35,8 +35,38 @@ class OCRTool(ModelBasedTool):
     
     def load_model(self, device: str) -> None:
         import easyocr
+        import os
         from tool.model_config import OCR_MODEL_DIR
-        self.model = easyocr.Reader(["en"], gpu=device.startswith("cuda"), model_storage_directory=OCR_MODEL_DIR)
+        
+        if device.startswith("cuda"):
+            # EasyOCR doesn't support specifying device directly, use environment variable
+            device_id = device.split(":")[-1]
+            old_env = os.environ.get('CUDA_VISIBLE_DEVICES')
+            
+            try:
+                # Temporarily set visible devices to target GPU only
+                os.environ['CUDA_VISIBLE_DEVICES'] = device_id
+                
+                # Now EasyOCR will load to the only visible GPU (which maps to our target device)
+                self.model = easyocr.Reader(
+                    ["en"], 
+                    gpu=True, 
+                    model_storage_directory=OCR_MODEL_DIR
+                )
+            finally:
+                # Always restore environment variable
+                if old_env is not None:
+                    os.environ['CUDA_VISIBLE_DEVICES'] = old_env
+                elif 'CUDA_VISIBLE_DEVICES' in os.environ:
+                    del os.environ['CUDA_VISIBLE_DEVICES']
+        else:
+            # CPU mode
+            self.model = easyocr.Reader(
+                ["en"], 
+                gpu=False, 
+                model_storage_directory=OCR_MODEL_DIR
+            )
+        
         self.device = device
         self.is_loaded = True
     
