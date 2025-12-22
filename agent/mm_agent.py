@@ -454,15 +454,44 @@ class MultimodalAgent(BasicAgent):
                         # Without memory: don't save, only format observation data
                         observation = self._format_observation(observation_data, tool_name) if observation_data else "Output generated"
                     
-                    # Add output object to context (both memory and non-memory modes)
+                    # Add text to context
                     conversation_context.append({
                         "type": "text",
                         "text": f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
                     })
-                    conversation_context.append({
-                        "type": output_type,
-                        output_type: output_object  # "image": PIL.Image or "video": video_obj
-                    })
+                    
+                    # Only add image/video when memory is disabled
+                    if not memory:
+                        from PIL import Image
+                        import tempfile
+                        import os
+                        
+                        if output_type == "img":
+                            # Save image to temp file for API compatibility
+                            if isinstance(output_object, Image.Image):
+                                os.makedirs("temp_images", exist_ok=True)
+                                temp_file = tempfile.NamedTemporaryFile(
+                                    delete=False,
+                                    suffix=".png",
+                                    dir="temp_images"
+                                )
+                                output_object.save(temp_file.name)
+                                image_path = temp_file.name
+                            else:
+                                image_path = output_object  # Already a path
+                            
+                            conversation_context.append({
+                                "type": "image",
+                                "image": image_path
+                            })
+                        elif output_type == "vid":
+                            # Ensure video is a path string
+                            video_path = output_object if isinstance(output_object, str) else str(output_object)
+                            
+                            conversation_context.append({
+                                "type": "video",
+                                "video": video_path
+                            })
                     
                 elif memory:
                     # No output_object, but memory enabled: log text-only action
@@ -514,6 +543,12 @@ class MultimodalAgent(BasicAgent):
                     if verbose:
                         logger.info(f"💾 Saved trace to: {memory.task_dir}/trace.json")
                 
+                # Cleanup temp images if memory was disabled
+                if not memory:
+                    import shutil
+                    if os.path.exists("temp_images"):
+                        shutil.rmtree("temp_images")
+                
                 history.append({
                     "iteration": iteration + 1,
                     "final_response": response,
@@ -543,6 +578,12 @@ class MultimodalAgent(BasicAgent):
             memory.end_task(success=False)
             if verbose:
                 logger.info(f"💾 Saved incomplete trace to: {memory.task_dir}/trace.json")
+        
+        # Cleanup temp images if memory was disabled
+        if not memory:
+            import shutil
+            if os.path.exists("temp_images"):
+                shutil.rmtree("temp_images")
         
         result = {
             "response": final_msg,
