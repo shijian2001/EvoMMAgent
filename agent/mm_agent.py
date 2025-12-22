@@ -464,7 +464,6 @@ class MultimodalAgent(BasicAgent):
                     if not memory:
                         from PIL import Image
                         import tempfile
-                        import os
                         
                         if output_type == "img":
                             # Save image to temp file for API compatibility
