@@ -30,6 +30,9 @@ class APIConfig:
     # Concurrency settings
     max_concurrent_per_key: int = 10
     
+    # Retry settings
+    max_retries: int = 5
+    
     # Timeout settings
     timeout: int = 120
 

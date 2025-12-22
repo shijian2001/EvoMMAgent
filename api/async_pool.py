@@ -21,6 +21,7 @@ class APIPool:
             max_concurrent_per_key: int = 300,
             base_url: str = "http://redservingapi.devops.xiaohongshu.com/v1",
             parse_json: bool = False,
+            max_retries: int = 5,
     ):
         """
         Initialize an async API pool.
@@ -31,12 +32,13 @@ class APIPool:
             max_concurrent_per_key: Maximum number of concurrent requests per API key
             base_url: Base URL for API endpoint
             parse_json: Whether to automatically parse JSON responses (default: False for Agent compatibility)
+            max_retries: Maximum number of retry attempts for failed requests
         """
         if not api_keys:
             raise ValueError("At least one API key is required")
 
         self.api_instances = [
-            QAWrapper(model_name, api_key, base_url=base_url, parse_json=parse_json)
+            QAWrapper(model_name, api_key, base_url=base_url, parse_json=parse_json, max_retries=max_retries)
             for api_key in api_keys
         ]
 

@@ -39,6 +39,7 @@ class MultimodalAgent(BasicAgent):
             mm_agent_template_zh_file: str = "MMAgent_ZH.jinja2",
             max_concurrent_per_key: Optional[int] = None,
             base_url: Optional[str] = None,
+            max_retries: Optional[int] = None,
             temperature: Optional[float] = None,
             max_tokens: Optional[int] = None,
             enable_memory: Optional[bool] = None,
@@ -64,6 +65,7 @@ class MultimodalAgent(BasicAgent):
             mm_agent_template_zh_file: Chinese multimodal agent system prompt template
             max_concurrent_per_key: Maximum concurrent requests per API key (uses config default if None)
             base_url: Base URL for API endpoint (uses config default if None)
+            max_retries: Maximum retry attempts for failed API requests (uses config default if None)
             temperature: Sampling temperature (uses config default if None)
             max_tokens: Maximum tokens in response (uses config default if None)
             enable_memory: Whether to enable memory system (uses config default if None)
@@ -92,6 +94,8 @@ class MultimodalAgent(BasicAgent):
             max_concurrent_per_key = config.api.max_concurrent_per_key
         if base_url is None:
             base_url = config.api.base_url
+        if max_retries is None:
+            max_retries = config.api.max_retries
         
         super().__init__(
             name=name,
@@ -129,6 +133,7 @@ class MultimodalAgent(BasicAgent):
             api_keys=api_keys,
             max_concurrent_per_key=max_concurrent_per_key,
             base_url=base_url,
+            max_retries=max_retries,
             parse_json=False,  # Agent needs raw string to detect tool calls
         )
     
