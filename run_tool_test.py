@@ -285,16 +285,16 @@ async def test():
             {"text": "a zoomed in image", "images": [img_id, zoomed_img_id, cropped_img_id]}
         )
     
-    # Save memory trace
-    trace_file = OUTPUT_DIR / "memory_trace.json"
-    with open(trace_file, "w") as f:
-        json.dump(memory.trace_data, f, indent=2, default=str)
+    # Finalize task and save trace automatically
+    memory.end_task(success=True)
     
     # Print summary
+    trace_path = Path(memory.task_dir) / "trace.json"
     print(f"\n{'='*60}")
     print(f"Test Summary")
     print(f"{'='*60}")
-    print(f"Memory trace saved to: {trace_file}")
+    print(f"✅ Trace saved to: {trace_path}")
+    print(f"Task ID: {memory.task_id}")
     print(f"Total actions: {len(memory.trace_data.get('trace', []))}")
     print(f"Input images: {len(memory.trace_data.get('input', {}).get('images', []))}")
     print(f"Output directory: {OUTPUT_DIR.absolute()}")
