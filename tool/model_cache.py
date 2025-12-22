@@ -157,6 +157,10 @@ def preload_tools(tool_bank: Optional[List[str]] = None, devices: Optional[List[
                 if hasattr(temp_tool, 'tokenizer') and temp_tool.tokenizer is not None:
                     objects_to_cache["tokenizer"] = temp_tool.tokenizer
                 
+                # Add preprocess if exists
+                if hasattr(temp_tool, 'preprocess') and temp_tool.preprocess is not None:
+                    objects_to_cache["preprocess"] = temp_tool.preprocess
+                
                 cache_objects(model_id, device, objects_to_cache, tool_name="preload")
                 model_device_map[model_id] = device
                 logger.info(f"  ✓ {model_id:20s} -> {device} (cached: {list(objects_to_cache.keys())})")
