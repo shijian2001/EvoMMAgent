@@ -40,6 +40,7 @@ async def main():
         "temperature": 0.0,  # Use 0 for deterministic evaluation
         "enable_memory": True,
         "memory_dir": "memory",
+        "max_retries": 10,
         "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",  # Use MMAgent template
         "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
     }
