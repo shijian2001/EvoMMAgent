@@ -41,6 +41,7 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
         self.model, _, self.preprocess = open_clip.create_model_and_transforms(CLIP_VERSION, pretrained=CLIP_PRETRAINED)
         self.model.eval()
         self.model = self.model.to(device)
+        self.tokenizer = open_clip.get_tokenizer(CLIP_VERSION)
         self.device = device
         self.is_loaded = True
     
