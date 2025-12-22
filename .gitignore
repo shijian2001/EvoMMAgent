@@ -67,5 +67,8 @@ api_deprecated/
 
 tool_models/
 test_outputs/
+test_tools/
 
 data/
+
+eval_results/

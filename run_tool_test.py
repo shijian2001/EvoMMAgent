@@ -23,7 +23,19 @@ OUTPUT_DIR = Path("test_outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Tools that need model preloading
-TOOLS_TO_PRELOAD = ["zoom_in", "localize_objects", "estimate_region_depth", "estimate_object_depth"]
+TOOLS_TO_PRELOAD = [
+    "zoom_in", 
+    "calculator", 
+    "crop", 
+    "ocr",
+    "visualize_regions",
+    "localize_objects", 
+    "estimate_region_depth", 
+    "estimate_object_depth", 
+    "get_image2images_similarity", 
+    "get_image2texts_similarity", 
+    "get_text2images_similarity"
+]
 
 # Optional: preload models to avoid first-call latency
 from tool.model_cache import preload_tools

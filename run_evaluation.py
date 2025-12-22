@@ -10,38 +10,36 @@ async def main():
     # ============================================================
     # Example 1: Direct Query (no tools, no memory)
     # ============================================================
-    # agent_config = {
-    #     "tool_bank": None,  # No tools
-    #     "model_name": "qwen2.5-vl-72b-instruct",
-    #     "max_tokens": 2048,
-    #     "temperature": 0.0,  # Use 0 for deterministic evaluation
-    #     "enable_memory": False,  # No memory
-    #     "use_zh": False,
-    # }
+    agent_config = {
+        "tool_bank": None,  # No tools
+        "model_name": "qwen2.5-vl-72b-instruct",
+        "max_tokens": 2048,
+        "temperature": 0.0,  # Use 0 for deterministic evaluation
+        "enable_memory": False,  # No memory
+    }
     
     # ============================================================
     # Example 2: MMAgent with Tools (ReAct pattern)
     # ============================================================
-    agent_config = {
-        "tool_bank": ["crop", "get_objects", "ocr"],  # Add tools as needed
-        "model_name": "qwen2.5-vl-72b-instruct",
-        "max_tokens": 2048,
-        "temperature": 0.0,  # Use 0 for deterministic evaluation
-        "enable_memory": True,
-        "memory_dir": "memory",
-        "use_zh": False,
-        "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",  # Use MMAgent template
-        "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
-    }
+    # agent_config = {
+    #     "tool_bank": ["crop", "get_objects", "ocr"],  # Add tools as needed
+    #     "model_name": "qwen2.5-vl-72b-instruct",
+    #     "max_tokens": 2048,
+    #     "temperature": 0.0,  # Use 0 for deterministic evaluation
+    #     "enable_memory": True,
+    #     "memory_dir": "memory",
+    #     "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",  # Use MMAgent template
+    #     "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
+    # }
     
     # Runner configuration
     runner = Runner(
-        jsonl_path="path/to/data.jsonl",
-        image_dir="path/to/images",
+        jsonl_path="data/eval/image/BLINK/blink_data.jsonl",
+        image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/dataset_name",
-        batch_size=32,
-        max_concurrent=16,
+        output_dir="eval_results/blink/qwen2.5_72b/direct",
+        batch_size=100,
+        max_concurrent=100,
         verbose=True
     )
     
