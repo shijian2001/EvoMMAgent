@@ -10,34 +10,46 @@ async def main():
     # ============================================================
     # Example 1: Direct Query (no tools, no memory)
     # ============================================================
-    agent_config = {
-        "tool_bank": None,  # No tools
-        "model_name": "qwen2.5-vl-72b-instruct",
-        "max_tokens": 2048,
-        "temperature": 0.0,  # Use 0 for deterministic evaluation
-        "enable_memory": False,  # No memory
-    }
+    # agent_config = {
+    #     "tool_bank": None,  # No tools
+    #     "model_name": "qwen2.5-vl-72b-instruct",
+    #     "max_tokens": 2048,
+    #     "temperature": 0.0,  # Use 0 for deterministic evaluation
+    #     "enable_memory": False,  # No memory
+    # }
     
     # ============================================================
     # Example 2: MMAgent with Tools (ReAct pattern)
     # ============================================================
-    # agent_config = {
-    #     "tool_bank": ["crop", "get_objects", "ocr"],  # Add tools as needed
-    #     "model_name": "qwen2.5-vl-72b-instruct",
-    #     "max_tokens": 2048,
-    #     "temperature": 0.0,  # Use 0 for deterministic evaluation
-    #     "enable_memory": True,
-    #     "memory_dir": "memory",
-    #     "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",  # Use MMAgent template
-    #     "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
-    # }
+    agent_config = {
+        "tool_bank": [
+            "zoom_in", 
+            "calculator", 
+            "crop", 
+            "ocr",
+            "visualize_regions",
+            "localize_objects", 
+            "estimate_region_depth", 
+            "estimate_object_depth", 
+            "get_image2images_similarity", 
+            "get_image2texts_similarity", 
+            "get_text2images_similarity"
+        ],
+        "model_name": "qwen2.5-vl-7b-instruct",
+        "max_tokens": 2048,
+        "temperature": 0.0,  # Use 0 for deterministic evaluation
+        "enable_memory": True,
+        "memory_dir": "memory",
+        "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",  # Use MMAgent template
+        "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
+    }
     
     # Runner configuration
     runner = Runner(
         jsonl_path="data/eval/image/BLINK/blink_data.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/blink/qwen2.5_72b/direct",
+        output_dir="eval_results/blink/qwen2.5_7b/ours",
         batch_size=100,
         max_concurrent=100,
         verbose=True
