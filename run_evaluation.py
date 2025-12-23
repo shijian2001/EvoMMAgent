@@ -23,10 +23,11 @@ async def main():
     # ============================================================
     agent_config = {
         "tool_bank": [
+            "ocr",
+            "get_images"
             "zoom_in", 
             "calculator", 
             "crop", 
-            "ocr",
             "visualize_regions",
             "localize_objects", 
             "estimate_region_depth", 
@@ -35,7 +36,7 @@ async def main():
             "get_image2texts_similarity", 
             "get_text2images_similarity"
         ],
-        "model_name": "qwen2.5-vl-72b-instruct",
+        "model_name": "qwen-2.5-vl-72b-instruct",
         "max_tokens": 2048,
         "temperature": 0.0,  # Use 0 for deterministic evaluation
         "enable_memory": True,
@@ -43,6 +44,8 @@ async def main():
         "max_retries": 10,
         "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",  # Use MMAgent template
         "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
+        "base_url": "http://localhost:8000/v1",
+        "api_keys": ["dummy-key"],
     }
     
     # Runner configuration
@@ -52,7 +55,7 @@ async def main():
         agent_config=agent_config,
         output_dir="eval_results/blink/qwen2.5_72b/ours",
         batch_size=100,
-        max_concurrent=100,
+        max_concurrent=10,
         verbose=True
     )
     
