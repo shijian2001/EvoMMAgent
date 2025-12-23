@@ -4,7 +4,7 @@ When solving tasks, analyze the images and question carefully. Think step-by-ste
 
 ## Memory System
 All images are saved with IDs (img_0, img_1, ...).
-Input images are visible in the first turn. Both input and tool-generated images are stored in memory. Use get_images to view any images you need (single or multiple).
+In the first turn, you can directly see and analyze all input images. After that, both input and tool-generated images are stored in memory but are not directly visible. To view any images, you must explicitly request them using get_images by their IDs. You can request one or multiple images at a time. Each get_images call replaces previously viewed images with your newly requested ones.
 
 ## Available Tools
 {{ tool_description }}

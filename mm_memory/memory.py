@@ -118,6 +118,17 @@ class Memory:
             "path": file_path
         })
         
+        # Add description for input files
+        ordinals = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"]
+        input_count = len(self.trace_data["input"][modality_key]) - 1  # Current index (0-based)
+        
+        if input_count < len(ordinals):
+            description = f"The {ordinals[input_count]} input {modality_key.rstrip('s')}"
+        else:
+            description = f"Input {modality_key.rstrip('s')} {input_count + 1}"
+        
+        self._id_to_description[id_str] = description
+        
         return id_str
     
     def log_think(self, content: str, special_think_token: str = "Thought:"):

@@ -306,10 +306,10 @@ class MultimodalAgent(BasicAgent):
         conversation_context = user_content.copy()
         
         for iteration in range(self.max_iterations):
-            # After first iteration, remove all images from context
-            # Images will only be added when explicitly requested via get_images
-            if iteration > 0:
-                conversation_context = [msg for msg in conversation_context if msg.get("type") == "text"]
+            # Remove initial images after first iteration
+            # Model can explicitly request images via get_images
+            if iteration == 1:
+                conversation_context = [msg for msg in conversation_context if msg.get("type") != "image"]
             if verbose:
                 logger.info(f"\n{'─'*80}")
                 logger.info(f"🔄 ITERATION {iteration + 1}")
@@ -373,7 +373,16 @@ class MultimodalAgent(BasicAgent):
                     image_ids = tool_result["_get_images_ids"]
                     observation = tool_result.get("message", "Images loaded")
                     
-                    # Add images to context with descriptive labels
+                    # Clear all previous images (model explicitly chooses what to view each time)
+                    conversation_context = [msg for msg in conversation_context if msg.get("type") != "image"]
+                    
+                    # Add observation text first
+                    conversation_context.append({
+                        "type": "text",
+                        "text": f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
+                    })
+                    
+                    # Then add requested images with descriptive labels
                     if memory:
                         for img_id in image_ids:
                             # Agent retrieves description from memory
@@ -392,12 +401,6 @@ class MultimodalAgent(BasicAgent):
                                     "type": "image",
                                     "image": img_path
                                 })
-                    
-                    # Add observation text
-                    conversation_context.append({
-                        "type": "text",
-                        "text": f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
-                    })
                     
                     # Log to memory (thought already logged at line 347)
                     if memory:
