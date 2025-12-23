@@ -84,6 +84,7 @@ class Memory:
         }
         self.ref_counters = {"img": 0, "vid": 0}
         self._path_to_id = {}
+        self._id_to_description = {}
         
         return self.task_id
     
@@ -174,6 +175,9 @@ class Memory:
             # Build observation dict with id and description
             if description is None:
                 description = f"{tool} output"
+            
+            # Save ID to description mapping for quick lookup
+            self._id_to_description[output_id] = description
             
             observation_dict = {
                 "id": output_id,
@@ -295,6 +299,17 @@ class Memory:
         pattern = os.path.join(self.task_dir, f"{ref_id}.*")
         matches = glob.glob(pattern)
         return matches[0] if matches else None
+    
+    def get_description(self, ref_id: str) -> Optional[str]:
+        """Get description of a generated image/video.
+        
+        Args:
+            ref_id: Reference ID (e.g., "img_1", "vid_0")
+            
+        Returns:
+            Description string, or None if not found
+        """
+        return self._id_to_description.get(ref_id)
     
     def resolve_ids(self, properties: Dict[str, Any]) -> Dict[str, Any]:
         """Resolve reference IDs to file paths in properties.

@@ -360,6 +360,48 @@ class MultimodalAgent(BasicAgent):
                 
                 tool_result = self._call_tool(tool_name, resolved_args_str)
                 
+                # Special handling for get_images tool
+                if isinstance(tool_result, dict) and "_get_images_ids" in tool_result:
+                    image_ids = tool_result["_get_images_ids"]
+                    observation = tool_result.get("message", "Images loaded")
+                    
+                    # Add images to context with descriptive labels
+                    if memory:
+                        for img_id in image_ids:
+                            # Agent retrieves description from memory
+                            desc = memory.get_description(img_id) or "Generated image"
+                            
+                            # Add text label: "img_1: Cropped img_0 at [...]"
+                            conversation_context.append({
+                                "type": "text",
+                                "text": f"{img_id}: {desc}"
+                            })
+                            
+                            # Add actual image
+                            img_path = memory.get_file_path(img_id)
+                            if img_path:
+                                conversation_context.append({
+                                    "type": "image",
+                                    "image": img_path
+                                })
+                    
+                    # Add observation text
+                    conversation_context.append({
+                        "type": "text",
+                        "text": f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
+                    })
+                    
+                    # Log to memory
+                    if memory:
+                        memory.log_think(thought, self.special_think_token)
+                        memory.log_action(
+                            tool=tool_name,
+                            properties=original_properties or (json.loads(tool_args) if isinstance(tool_args, str) else tool_args),
+                            observation=observation
+                        )
+                    
+                    continue  # Skip normal processing
+                
                 if isinstance(tool_result, dict):
                     output_image = tool_result.get("output_image")
                     output_video = tool_result.get("output_video")
