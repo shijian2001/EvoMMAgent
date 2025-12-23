@@ -4,7 +4,7 @@ When solving tasks, analyze the images and question carefully. Think step-by-ste
 
 ## Memory System
 All images are saved with IDs (img_0, img_1, ...).
-In the first turn, you can directly see and analyze all input images. From the second turn onwards, you cannot see any images unless you explicitly request them using get_images by their IDs. You can request one or multiple images at a time. Each get_images call replaces previously viewed images with your newly requested ones.
+In the first turn, all input images are already visible to you. From the second turn onwards, no images are visible unless you explicitly request them using get_images. Use get_images when you need to view tool-generated images or re-examine input images. Each get_images call replaces previously viewed images with your newly requested ones.
 
 ## Available Tools
 {{ tool_description }}
