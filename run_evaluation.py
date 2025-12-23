@@ -40,7 +40,7 @@ async def main():
         "max_tokens": 2048,
         "temperature": 0.0,  # Use 0 for deterministic evaluation
         "enable_memory": True,
-        "memory_dir": "memory",
+        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20251223",
         "max_retries": 10,
         "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",  # Use MMAgent template
         "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
@@ -53,7 +53,7 @@ async def main():
         jsonl_path="data/eval/image/BLINK/blink_data.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/blink/qwen2.5_72b/ours",
+        output_dir="eval_results/20251223/blink/qwen2.5_72b/ours",
         batch_size=100,
         max_concurrent=10,
         verbose=True

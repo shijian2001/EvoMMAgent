@@ -29,7 +29,7 @@ Some tools require additional system libraries:
 
 ```bash
 # Required for OCR tool (OpenCV/EasyOCR)
-sudo apt-get install -y libgl1-mesa-glx
+apt-get install -y libgl1-mesa-glx
 ```
 
 ### 5. Install package
