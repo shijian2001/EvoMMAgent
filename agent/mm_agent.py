@@ -354,8 +354,10 @@ class MultimodalAgent(BasicAgent):
                         tool_args_dict = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
                         if isinstance(tool_args_dict, dict):
                             original_properties = tool_args_dict.copy()
-                            resolved_args = memory.resolve_ids(tool_args_dict)
-                            resolved_args_str = json.dumps(resolved_args)
+                            # Special handling: get_images needs IDs, not paths
+                            if tool_name != "get_images":
+                                resolved_args = memory.resolve_ids(tool_args_dict)
+                                resolved_args_str = json.dumps(resolved_args)
                     except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
                         logger.debug(f"Failed to resolve IDs in tool args: {e}")
                         pass
