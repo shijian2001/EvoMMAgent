@@ -285,31 +285,31 @@ class MultimodalAgent(BasicAgent):
         
         user_content = [{"type": "text", "text": query_with_refs}]
         
-        # Add images
+        # Add images (marked as initial for later filtering)
         if images:
             for img in images:
                 if isinstance(img, str):
-                    user_content.append({"type": "image", "image": img})
+                    user_content.append({"type": "image", "image": img, "initial": True})
                 elif isinstance(img, dict):
-                    user_content.append({"type": "image", **img})
+                    user_content.append({"type": "image", "initial": True, **img})
         
-        # Add videos
+        # Add videos (marked as initial for later filtering)
         if videos:
             for vid in videos:
                 if isinstance(vid, str):
-                    user_content.append({"type": "video", "video": vid})
+                    user_content.append({"type": "video", "video": vid, "initial": True})
                 elif isinstance(vid, dict):
-                    user_content.append({"type": "video", **vid})
+                    user_content.append({"type": "video", "initial": True, **vid})
         
         # ReAct loop
         history = []
         conversation_context = user_content.copy()
         
         for iteration in range(self.max_iterations):
-            # Remove initial images after first iteration
-            # Model can explicitly request images via get_images
-            if iteration == 1:
-                conversation_context = [msg for msg in conversation_context if msg.get("type") != "image"]
+            # Remove initial media after first iteration (model must use get_images to view)
+            if iteration >= 1:
+                conversation_context = [msg for msg in conversation_context if not msg.get("initial")]
+            
             if verbose:
                 logger.info(f"\n{'─'*80}")
                 logger.info(f"🔄 ITERATION {iteration + 1}")
@@ -373,8 +373,9 @@ class MultimodalAgent(BasicAgent):
                     image_ids = tool_result["_get_images_ids"]
                     observation = tool_result.get("message", "Images loaded")
                     
-                    # Clear all previous images (model explicitly chooses what to view each time)
-                    conversation_context = [msg for msg in conversation_context if msg.get("type") != "image"]
+                    # Clear all previous images and videos (model explicitly chooses what to view each time)
+                    conversation_context = [msg for msg in conversation_context 
+                                          if msg.get("type") not in ["image", "video"]]
                     
                     # Add observation text first
                     conversation_context.append({
@@ -382,11 +383,11 @@ class MultimodalAgent(BasicAgent):
                         "text": f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
                     })
                     
-                    # Then add requested images with descriptive labels
+                    # Then add requested images/videos with descriptive labels
                     if memory:
                         for img_id in image_ids:
                             # Agent retrieves description from memory
-                            desc = memory.get_description(img_id) or "Generated image"
+                            desc = memory.get_description(img_id) or "Generated content"
                             
                             # Add text label: "img_1: Cropped img_0 at [...]"
                             conversation_context.append({
@@ -394,12 +395,13 @@ class MultimodalAgent(BasicAgent):
                                 "text": f"{img_id}: {desc}"
                             })
                             
-                            # Add actual image
-                            img_path = memory.get_file_path(img_id)
-                            if img_path:
+                            # Add actual image or video based on ID prefix
+                            file_path = memory.get_file_path(img_id)
+                            if file_path:
+                                media_type = "video" if img_id.startswith("vid_") else "image"
                                 conversation_context.append({
-                                    "type": "image",
-                                    "image": img_path
+                                    "type": media_type,
+                                    media_type: file_path
                                 })
                     
                     # Log to memory (thought already logged at line 347)
