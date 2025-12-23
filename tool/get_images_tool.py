@@ -30,7 +30,7 @@ class GetImagesTool(BasicTool):
         
         Args:
             params: Parameters containing image IDs to view
-            **kwargs: Additional arguments (must include 'memory')
+            **kwargs: Additional arguments (not used)
             
         Returns:
             Dict with special marker for agent processing
@@ -43,7 +43,7 @@ class GetImagesTool(BasicTool):
         if not isinstance(image_ids, list):
             image_ids = [image_ids]
         
-        # Validate image IDs format
+        # Validate image IDs format only
         for img_id in image_ids:
             if not isinstance(img_id, str):
                 return {
@@ -53,24 +53,6 @@ class GetImagesTool(BasicTool):
                 return {
                     "error": f"Invalid image ID format: {img_id}. Expected format: 'img_0', 'img_1', etc."
                 }
-        
-        # Check if memory is available
-        memory = kwargs.get('memory')
-        if not memory:
-            return {
-                "error": "Memory is not enabled. Cannot retrieve images without memory."
-            }
-        
-        # Verify all images exist
-        missing_ids = []
-        for img_id in image_ids:
-            if not memory.get_file_path(img_id):
-                missing_ids.append(img_id)
-        
-        if missing_ids:
-            return {
-                "error": f"Image(s) not found: {', '.join(missing_ids)}. They may not have been generated yet."
-            }
         
         # Generate concise observation message
         count = len(image_ids)
