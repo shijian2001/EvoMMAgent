@@ -395,9 +395,8 @@ class MultimodalAgent(BasicAgent):
                         "text": f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
                     })
                     
-                    # Log to memory
+                    # Log to memory (thought already logged at line 347)
                     if memory:
-                        memory.log_think(thought, self.special_think_token)
                         memory.log_action(
                             tool=tool_name,
                             properties=original_properties or (json.loads(tool_args) if isinstance(tool_args, str) else tool_args),
