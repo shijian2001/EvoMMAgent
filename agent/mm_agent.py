@@ -306,6 +306,10 @@ class MultimodalAgent(BasicAgent):
         conversation_context = user_content.copy()
         
         for iteration in range(self.max_iterations):
+            # After first iteration, remove all images from context
+            # Images will only be added when explicitly requested via get_images
+            if iteration > 0:
+                conversation_context = [msg for msg in conversation_context if msg.get("type") == "text"]
             if verbose:
                 logger.info(f"\n{'─'*80}")
                 logger.info(f"🔄 ITERATION {iteration + 1}")
