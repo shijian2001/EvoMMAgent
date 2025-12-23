@@ -24,7 +24,7 @@ async def main():
     agent_config = {
         "tool_bank": [
             "ocr",
-            "get_images"
+            "get_images",
             "zoom_in", 
             "calculator", 
             "crop", 
