@@ -147,15 +147,17 @@ class MultimodalAgent(BasicAgent):
         if not self.tool_bank:
             # Simple prompt without tools (for direct query)
             base_prompt = (
-                "你是一个智能助手，可以理解和处理文本、图像和视频。\n\n"
-                "**重要：你必须严格按照以下格式输出最终答案：**\n"
+                "你是一个可以理解文本、图像和视频的多模态助手。\n\n"
+                "**重要：你必须严格遵守以下格式：**\n\n"
+                f"{self.special_think_token} [你的推理]\n"
                 f"{self.special_answer_token} [你的答案]\n\n"
-                "不要使用其他格式，必须以该标记开始你的答案。"
+                "不得使用其他格式。"
             ) if self.use_zh else (
-                "You are an intelligent assistant that can understand and process text, images, and videos.\n\n"
-                "**IMPORTANT: You MUST strictly follow this format for your final answer:**\n"
+                "You are a multimodal assistant that can understand text, images, and videos.\n\n"
+                "**IMPORTANT: You MUST follow this exact format:**\n\n"
+                f"{self.special_think_token} [your reasoning]\n"
                 f"{self.special_answer_token} [your answer]\n\n"
-                "Do not use any other format. Your answer MUST start with this token."
+                "Do not use any other format."
             )
             return base_prompt
         
