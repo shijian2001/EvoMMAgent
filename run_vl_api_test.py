@@ -29,8 +29,8 @@ async def test_text_only():
         # Test query
         result = await api_pool.execute(
             "qa",
-            system_prompt="You are a helpful assistant.",
-            user_prompt="What is the capital of France?",
+            system="You are a helpful assistant.",
+            messages=[{"role": "user", "content": "What is the capital of France?"}],
         )
         
         print(f"\nResult: {result['answer']}")
@@ -64,18 +64,20 @@ async def test_image():
         # Test image path
         test_image = os.path.abspath("test_data/000000000009.jpg")
         
-        # Test query with image
-        user_prompt = [
-            {"type": "text", "text": "Describe this image in detail."},
-            {"type": "image", "image": test_image}
-        ]
-
         print("Starting test query with image")
         
         result = await api_pool.execute(
             "qa",
-            system_prompt="You are a helpful assistant that can understand images.",
-            user_prompt=user_prompt,
+            system="You are a helpful assistant that can understand images.",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe this image in detail."},
+                        {"type": "image", "image": test_image}
+                    ]
+                }
+            ],
         )
         
         print(f"\nResult: {result['answer']}")
@@ -107,21 +109,23 @@ async def test_video():
         # Test video path
         test_video = os.path.abspath("test_data/0A8CF.mp4")
         
-        # Test query with video
-        user_prompt = [
-            {"type": "text", "text": "Describe what happens in this video."},
-            {
-                "type": "video",
-                "video": test_video,
-                "min_pixels": 4 * 32 * 32,
-                "max_pixels": 256 * 32 * 32
-            }
-        ]
-        
         result = await api_pool.execute(
             "qa",
-            system_prompt="You are a helpful assistant that can understand videos.",
-            user_prompt=user_prompt,
+            system="You are a helpful assistant that can understand videos.",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe what happens in this video."},
+                        {
+                            "type": "video",
+                            "video": test_video,
+                            "min_pixels": 4 * 32 * 32,
+                            "max_pixels": 256 * 32 * 32
+                        }
+                    ]
+                }
+            ],
         )
         
         print(f"\nResult: {result['answer']}")

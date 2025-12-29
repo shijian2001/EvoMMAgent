@@ -180,11 +180,11 @@ class MultimodalAgent(BasicAgent):
         Returns:
             Dict with answer, tool_calls (if any), and other metadata
         """
-        # Use the unified qa method from API pool
+        # Use the unified qa method from API pool with new signature
         result = await self.api_pool.execute(
             "qa",
-            system_prompt=system_prompt,
-            user_prompt=conversation_history,
+            system=system_prompt,
+            messages=conversation_history,
             tools=tools,
             tool_choice="auto" if tools else "none",
             temperature=self.temperature,

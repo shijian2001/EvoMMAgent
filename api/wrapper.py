@@ -63,8 +63,8 @@ class QAWrapper:
 
     async def qa(
         self, 
-        system_prompt: str, 
-        user_prompt: Union[str, List[Dict[str, Any]]], 
+        system: str,
+        messages: List[Dict[str, Any]],
         tools: Optional[List[Dict]] = None,
         tool_choice: str = "auto",
         rational: bool = False,
@@ -72,14 +72,16 @@ class QAWrapper:
         max_tokens: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Send a prompt to the model and get a response.
+        Send messages to the model with system prompt.
 
         Args:
-            system_prompt: System message
-            user_prompt: User query content. Can be:
-                - str: simple text query
-                - List[Dict]: multimodal content items [{"type": "text", ...}, {"type": "image", ...}]
-                  OR full message history [{"role": "user", ...}, {"role": "assistant", ...}, ...]
+            system: System prompt
+            messages: Conversation messages in OpenAI format:
+                [
+                    {"role": "user", "content": "..." or [{"type": "text", ...}, {"type": "image", ...}]},
+                    {"role": "assistant", "content": "...", "tool_calls": [...]},
+                    {"role": "tool", "tool_call_id": "...", "content": "..."}
+                ]
             tools: Optional list of tool definitions in OpenAI format
             tool_choice: Tool choice mode ("auto", "required", "none")
             rational: Whether to enable deep reasoning mode
@@ -92,6 +94,23 @@ class QAWrapper:
         Raises:
             ValueError: If reasoning is requested but not supported by the model
             Exception: If all retries are exhausted
+            
+        Example:
+            # Single turn
+            response = await qa(
+                system="You are a helpful assistant.",
+                messages=[{"role": "user", "content": "Hello"}]
+            )
+            
+            # Multi-turn with tools
+            response = await qa(
+                system="You are a helpful assistant.",
+                messages=[
+                    {"role": "user", "content": [{"type": "text", "text": "..."}, {"type": "image", "image": "..."}]},
+                    {"role": "assistant", "tool_calls": [...]},
+                    {"role": "tool", "content": "..."}
+                ]
+            )
         """
         start_time = time.time()
         
@@ -102,36 +121,16 @@ class QAWrapper:
         
         for attempt in range(self.max_retries):
             try:
-                
-                # Determine if input is multimodal/messages
-                if isinstance(user_prompt, list):
-                    result = await self._qa_multimodal(
-                        system_prompt, 
-                        user_prompt,
-                        tools=tools,
-                        tool_choice=tool_choice,
-                        temperature=temperature,
-                        max_tokens=max_tokens
-                    )
-                else:
-                    if rational:
-                        result = await self._qa_with_reasoning(
-                            system_prompt, 
-                            user_prompt,
-                            tools=tools,
-                            tool_choice=tool_choice,
-                            temperature=temperature,
-                            max_tokens=max_tokens
-                        )
-                    else:
-                        result = await self._qa_standard(
-                            system_prompt, 
-                            user_prompt,
-                            tools=tools,
-                            tool_choice=tool_choice,
-                            temperature=temperature,
-                            max_tokens=max_tokens
-                        )
+                # Process messages with multimodal content
+                result = await self._qa(
+                    system=system,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    rational=rational,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
                 
                 # Log successful request time
                 elapsed = time.time() - start_time
@@ -167,164 +166,68 @@ class QAWrapper:
         # All retries exhausted
         raise Exception(f"API call failed after {self.max_retries} retries. Last error: {str(last_exception)}")
 
-    async def _qa_standard(
-        self, 
-        system_prompt: str, 
-        user_prompt: str,
+    async def _qa(
+        self,
+        system: str,
+        messages: List[Dict[str, Any]],
         tools: Optional[List[Dict]] = None,
         tool_choice: str = "auto",
+        rational: bool = False,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Execute a standard query without reasoning."""
-        request_params = {
-            "model": self.model_name,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            "stream": False,
-            "temperature": temperature if temperature is not None else self.temperature,
-        }
+        """Internal method to execute query with OpenAI-format messages.
         
-        # Add max_tokens if specified
-        tokens = max_tokens if max_tokens is not None else self.max_tokens
-        if tokens is not None:
-            request_params["max_tokens"] = tokens
-        
-        # Add tools if specified
-        if tools:
-            request_params["tools"] = tools
-            request_params["tool_choice"] = tool_choice
-        
-        completion = await self.client.chat.completions.create(**request_params)
-
-        self.stats["calls"] += 1
-        
-        # Extract response
-        message = completion.choices[0].message
-        result = {
-            "answer": message.content or "",
-            "rational": ""
-        }
-        
-        # Extract tool calls if present
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            result["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": tc.type,
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments
-                    }
-                }
-                for tc in message.tool_calls
-            ]
-        
-        return result
-
-    async def _qa_with_reasoning(
-        self, 
-        system_prompt: str, 
-        user_prompt: str,
-        tools: Optional[List[Dict]] = None,
-        tool_choice: str = "auto",
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """Execute a query with reasoning enabled."""
-        request_params = {
-            "model": self.model_name,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-                {"role": "assistant", "content": "<think>\n"}
-            ],
-            "stream": False,
-            "temperature": temperature if temperature is not None else self.temperature,
-        }
-        
-        # Add max_tokens if specified
-        tokens = max_tokens if max_tokens is not None else self.max_tokens
-        if tokens is not None:
-            request_params["max_tokens"] = tokens
-        
-        # Add tools if specified
-        if tools:
-            request_params["tools"] = tools
-            request_params["tool_choice"] = tool_choice
-        
-        completion = await self.client.chat.completions.create(**request_params)
-
-        self.stats["calls"] += 1
-        reasoning = getattr(completion.choices[0].message, "reasoning_content", "")
-        
-        # Extract response
-        message = completion.choices[0].message
-        answer = message.content
-        
-        # Parse JSON if enabled
-        if self.parse_json:
-            answer = JSONParser.parse(answer)
-        
-        result = {
-            "answer": answer or "",
-            "rational": reasoning if reasoning else ""
-        }
-        
-        # Extract tool calls if present
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            result["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": tc.type,
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments
-                    }
-                }
-                for tc in message.tool_calls
-            ]
-        
-        return result
-
-    async def _qa_multimodal(
-        self, 
-        system_prompt: str, 
-        user_prompt: List[Dict[str, Any]],
-        tools: Optional[List[Dict]] = None,
-        tool_choice: str = "auto",
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """Execute a multimodal query or handle full conversation history.
+        Processes multimodal content and handles tool calls.
         
         Args:
-            user_prompt: Can be either:
-                - Content items: [{"type": "text", ...}, {"type": "image", ...}]
-                - Full messages: [{"role": "user", "content": ...}, {"role": "assistant", ...}, ...]
+            system: System prompt
+            messages: Conversation messages in OpenAI format
+            tools: Tool definitions
+            tool_choice: Tool choice mode
+            rational: Whether to enable reasoning
+            temperature: Temperature
+            max_tokens: Max tokens
+            
+        Returns:
+            Dict with answer and optional tool_calls
         """
-        # Check if user_prompt is full message history (has "role" key) or content items (has "type" key)
-        if user_prompt and isinstance(user_prompt[0], dict) and "role" in user_prompt[0]:
-            # Full conversation history provided - use it directly
-            messages = [{"role": "system", "content": system_prompt}] + user_prompt
-            mm_kwargs = None
-        else:
-            # Content items - build user message
-            processed_content, mm_kwargs = build_multimodal_message(
-                user_prompt, 
-                model_name=self.model_name
-            )
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": processed_content}
-            ]
+        # Process each user message's multimodal content
+        processed_messages = []
+        mm_kwargs = None
+        
+        for msg in messages:
+            if msg.get("role") == "user" and isinstance(msg.get("content"), list):
+                # Convert multimodal content to OpenAI format
+                processed_content, temp_mm_kwargs = build_multimodal_message(
+                    msg["content"],
+                    model_name=self.model_name
+                )
+                processed_messages.append({
+                    "role": "user",
+                    "content": processed_content
+                })
+                # Use mm_kwargs from the last user message (if any)
+                if temp_mm_kwargs:
+                    mm_kwargs = temp_mm_kwargs
+            else:
+                # Keep other messages as-is (assistant, tool, or text-only user)
+                processed_messages.append(msg)
+        
+        # Build full message list with system prompt
+        full_messages = [
+            {"role": "system", "content": system},
+            *processed_messages
+        ]
+        
+        # Add reasoning prompt if enabled
+        if rational:
+            full_messages.append({"role": "assistant", "content": "<think>\n"})
 
         # Prepare request parameters
         request_params = {
             "model": self.model_name,
-            "messages": messages,
+            "messages": full_messages,
             "stream": False,
             "temperature": temperature if temperature is not None else self.temperature,
         }
@@ -338,11 +241,12 @@ class QAWrapper:
         if tools:
             request_params["tools"] = tools
             request_params["tool_choice"] = tool_choice
-
-        # Add multimodal processor kwargs if present
+        
+        # Add multimodal processor kwargs if present (only for Qwen models)
         if mm_kwargs:
             request_params["extra_body"] = {"mm_processor_kwargs": mm_kwargs}
 
+        # Call API
         completion = await self.client.chat.completions.create(**request_params)
 
         self.stats["calls"] += 1
@@ -352,12 +256,15 @@ class QAWrapper:
         answer = message.content
         
         # Parse JSON if enabled
-        if self.parse_json:
+        if self.parse_json and answer:
             answer = JSONParser.parse(answer)
+        
+        # Extract reasoning if available
+        reasoning = getattr(message, "reasoning_content", "") if rational else ""
         
         result = {
             "answer": answer or "",
-            "rational": ""
+            "rational": reasoning
         }
         
         # Extract tool calls if present
