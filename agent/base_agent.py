@@ -28,10 +28,6 @@ class BasicAgent(ABC):
             system_template_dir: str = "./template",
             tool_description_template_en_file: str = "ToolCaller_EN.jinja2",
             tool_description_template_zh_file: str = "ToolCaller_ZH.jinja2",
-            special_func_token: str = "\nAction:",
-            special_args_token: str = "\nAction Input:",
-            special_obs_token: str = "\nObservation:",
-            special_think_token: str = "Thought:",
             special_answer_token: str = "\nAnswer:",
             preload_devices: Optional[List[str]] = None,
     ):
@@ -44,13 +40,9 @@ class BasicAgent(ABC):
             tool_bank: List of tools (str names or dict configs)
             use_zh: Whether to use Chinese language
             system_template_dir: Directory for Jinja2 templates
-            tool_description_template_en_file: English tool description template
-            tool_description_template_zh_file: Chinese tool description template
-            special_func_token: Token to mark action/function calls
-            special_args_token: Token to mark action input
-            special_obs_token: Token to mark observations
-            special_think_token: Token to mark thinking/reasoning section
-            special_answer_token: Token to mark final answer
+            tool_description_template_en_file: English tool description template (legacy, kept for compatibility)
+            tool_description_template_zh_file: Chinese tool description template (legacy, kept for compatibility)
+            special_answer_token: Token to mark final answer (for evaluation)
             preload_devices: Devices for preloading models, e.g., ["cuda:0", "cuda:1"] (default: auto-detect all GPUs)
         """
         self.name = name
@@ -76,11 +68,7 @@ class BasicAgent(ABC):
         )
         self.tool_description_jinja_file = tool_description_template_zh_file if use_zh else tool_description_template_en_file
         
-        # Special tokens for tool calling
-        self.special_think_token = special_think_token
-        self.special_func_token = special_func_token
-        self.special_args_token = special_args_token
-        self.special_obs_token = special_obs_token
+        # Special token for evaluation
         self.special_answer_token = special_answer_token
 
     def _init_tool(self, tool: Union[str, dict, BasicTool]):
@@ -211,68 +199,25 @@ class BasicAgent(ABC):
             # Can't serialize (e.g., contains PIL.Image), return as is
             return tool_result
 
-    def _detect_tool(
-            self,
-            response: str,
-    ):
-        """Detect tool call from LLM response using special tokens.
-        
-        Args:
-            response: LLM response text
-            
-        Returns:
-            Tuple of (has_tool_call, func_name, func_args, thought)
-        """
-        # Reference: https://github.com/QwenLM/Qwen-Agent/blob/main/qwen_agent/agents/react_chat.py
-        func_name, func_args = None, None
-        func_idx, args_idx, obs_idx = response.rfind(self.special_func_token), response.rfind(
-            self.special_args_token), response.rfind(self.special_obs_token)
-        if 0 <= func_idx < args_idx:  # If the text has `Action` and `Action input`,
-            if obs_idx < args_idx:  # but does not contain `Observation`,
-                # then it is likely that `Observation` is ignored by the LLM,
-                # because the output text may have discarded the stop word.
-                response = response.rstrip() + self.special_obs_token  # Add it back.
 
-            obs_idx = response.rfind(self.special_obs_token)
-            func_name = response[func_idx + len(self.special_func_token):args_idx].strip()
-            func_args = response[args_idx + len(self.special_args_token):obs_idx].strip()
-            response = response[:func_idx]  # Return the response before tool call, i.e., `Thought`
-
-        return (func_name is not None), func_name, func_args, response
-
-    def _get_tool_description(
-            self
-    ):
-        """Generate tool descriptions from registered tools using templates.
+    def _build_tools_schema(self) -> List[Dict]:
+        """Build OpenAI-format tools schema from registered tools.
         
         Returns:
-            Tuple of (comma-separated tool names, formatted tool descriptions)
+            List of tool definitions in OpenAI format
         """
-        tool_names, tool_descriptions = [], []
+        tools = []
         for tool in self.tool_bank.values():
-            tool_name = tool.tool_name
-            tool_names.append(tool_name)
-            name_for_model = tool.name_for_model
-            name_for_human = tool.name_for_human
-            tool_description = tool.tool_description
-            assert len(tool_name) > 0 and len(name_for_model) > 0 and len(name_for_human) > 0 and len(
-                tool_description) > 0, f"tool_name is {tool_name}"
-
-            template_vars = {
-                "name_for_model": name_for_model,
-                "name_for_human": name_for_human,
-                "tool_description": tool_description,
-                "parameters": tool.parameters,
-                "example": tool.tool_example,
-            }
-            jinja_file = self.tool_description_jinja_file
-            template = self.jinja_env.get_template(jinja_file)
-            prompt = template.render(**template_vars)
-            tool_descriptions.append(prompt)
-
-        tool_name = ",".join(tool_names)
-        tool_description = "\n\n".join(tool_descriptions)
-        return (tool_name, tool_description)
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": tool.name_for_model,
+                    "description": tool.tool_description,
+                    "parameters": tool.parameters
+                }
+            })
+        return tools
+    
 
     def cleanup(self) -> None:
         """Cleanup all model-based tools and release GPU resources."""

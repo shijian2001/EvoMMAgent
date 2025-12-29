@@ -12,20 +12,20 @@ def get_task_instructions(special_answer_token: str = "\nAnswer:") -> dict:
     """
     return {
         "multi-choice": {
-            "en": f"Select one option and output ONLY the option letter (A/B/C/D/E) in the format: {special_answer_token} [letter]",
-            "zh": f"选择一个选项，仅输出选项字母（A/B/C/D/E），格式为：{special_answer_token} [字母]",
+            "en": f"You may think step-by-step to analyze the question, but you MUST end your response with your final answer in this EXACT format on a new line: {special_answer_token} [single letter only, e.g., A or B or C]. Do not add any explanation after the answer.",
+            "zh": f"你可以逐步思考来分析问题，但必须在回答的最后一行按以下精确格式输出最终答案：{special_answer_token} [仅单个字母，如 A 或 B 或 C]。答案后不要添加任何解释。",
         },
         "open-ended": {
-            "en": f"Provide a concise answer in the format: {special_answer_token} [your answer]",
-            "zh": f"提供简洁答案，格式为：{special_answer_token} [你的答案]",
+            "en": f"You may provide reasoning first, but you MUST end your response with your final answer in this format on a new line: {special_answer_token} [your concise answer]",
+            "zh": f"你可以先提供推理过程，但必须在回答的最后一行按以下格式输出最终答案：{special_answer_token} [你的简洁答案]",
         },
         "yes-no": {
-            "en": f"Output in the format: {special_answer_token} Yes or {special_answer_token} No",
-            "zh": f"按格式输出：{special_answer_token} Yes 或 {special_answer_token} No",
+            "en": f"You may explain your reasoning, but you MUST end with: {special_answer_token} Yes or {special_answer_token} No",
+            "zh": f"你可以解释推理过程，但必须以以下格式结尾：{special_answer_token} Yes 或 {special_answer_token} No",
         },
         "true-false": {
-            "en": f"Output in the format: {special_answer_token} True or {special_answer_token} False",
-            "zh": f"按格式输出：{special_answer_token} True 或 {special_answer_token} False",
+            "en": f"You may explain your reasoning, but you MUST end with: {special_answer_token} True or {special_answer_token} False",
+            "zh": f"你可以解释推理过程，但必须以以下格式结尾：{special_answer_token} True 或 {special_answer_token} False",
         },
     }
 

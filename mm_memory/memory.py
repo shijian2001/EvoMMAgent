@@ -131,16 +131,13 @@ class Memory:
         
         return id_str
     
-    def log_think(self, content: str, special_think_token: str = "Thought:"):
+    def log_think(self, content: str):
         """Log a thinking step.
         
         Args:
-            content: Thought content
-            special_think_token: Special token to remove (default "Thought:")
+            content: Thought content (already cleaned, no special tokens)
         """
         content = content.strip()
-        if content.startswith(special_think_token):
-            content = content[len(special_think_token):].strip()
         
         step = len(self.trace_data["trace"]) + 1
         self.trace_data["trace"].append({

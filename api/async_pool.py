@@ -81,7 +81,7 @@ class APIPool:
 
         Args:
             method_name: Name of the method to call (e.g. 'qa')
-            *args, **kwargs: Arguments to pass to the method
+            *args, **kwargs: Arguments to pass to the method (including tools parameter)
 
         Returns:
             Result from the API call

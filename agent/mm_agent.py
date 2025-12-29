@@ -139,7 +139,10 @@ class MultimodalAgent(BasicAgent):
     
     
     def _build_system_prompt(self) -> str:
-        """Build system prompt with tool descriptions using Jinja2 template.
+        """Build simplified system prompt using Jinja2 template.
+        
+        Tool definitions are passed separately via tools parameter to API,
+        not included in the system prompt.
         
         Returns:
             System prompt string
@@ -147,37 +150,16 @@ class MultimodalAgent(BasicAgent):
         if not self.tool_bank:
             # Simple prompt without tools (for direct query)
             base_prompt = (
-                "你是一个可以理解文本、图像和视频的多模态助手。\n\n"
-                "**重要：你必须严格遵守以下格式：**\n\n"
-                f"{self.special_think_token} [你的推理]\n"
-                f"{self.special_answer_token} [你的答案]\n\n"
-                "不得使用其他格式。"
+                "你是一个可以理解文本、图像和视频的多模态助手。请仔细分析问题并给出清晰的答案。"
             ) if self.use_zh else (
-                "You are a multimodal assistant that can understand text, images, and videos.\n\n"
-                "**IMPORTANT: You MUST follow this exact format:**\n\n"
-                f"{self.special_think_token} [your reasoning]\n"
-                f"{self.special_answer_token} [your answer]\n\n"
-                "Do not use any other format."
+                "You are a multimodal assistant that can understand text, images, and videos. "
+                "Analyze the question carefully and provide clear answers."
             )
             return base_prompt
         
-        # Get tool information
-        tool_names, tool_descriptions = self._get_tool_description()
-        
-        # Prepare template variables
-        template_vars = {
-            "tool_names": tool_names,
-            "tool_description": tool_descriptions,
-            "special_think_token": self.special_think_token,
-            "special_func_token": self.special_func_token,
-            "special_args_token": self.special_args_token,
-            "special_obs_token": self.special_obs_token,
-            "special_answer_token": self.special_answer_token,
-        }
-        
-        # Render template
+        # Use template for tool-enabled agent
         template = self.jinja_env.get_template(self.mm_agent_template_file)
-        system_prompt = template.render(**template_vars)
+        system_prompt = template.render(enable_memory=self.enable_memory)
         
         return system_prompt
     
@@ -185,28 +167,31 @@ class MultimodalAgent(BasicAgent):
     async def _call_llm(
             self,
             system_prompt: str,
-            user_prompt: List[Dict[str, Any]],
-    ) -> str:
+            conversation_history: List[Dict[str, Any]],
+            tools: Optional[List[Dict]] = None,
+    ) -> Dict[str, Any]:
         """Call the LLM using the API pool.
         
         Args:
             system_prompt: System prompt string
-            user_prompt: User prompt with multimodal content
+            conversation_history: List of messages in OpenAI format with roles (user/assistant/tool)
+            tools: Optional list of tool definitions
             
         Returns:
-            LLM response string
+            Dict with answer, tool_calls (if any), and other metadata
         """
         # Use the unified qa method from API pool
         result = await self.api_pool.execute(
             "qa",
             system_prompt=system_prompt,
-            user_prompt=user_prompt,
+            user_prompt=conversation_history,
+            tools=tools,
+            tool_choice="auto" if tools else "none",
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
         
-        # Extract answer from result dict
-        return result.get("answer", "")
+        return result
     
     async def act(
             self,
@@ -263,10 +248,13 @@ class MultimodalAgent(BasicAgent):
                     if vid_path and os.path.exists(vid_path):
                         memory.add_input(vid_path, "vid")
         
-        # Build system prompt with tool descriptions
+        # Build system prompt (simplified, without tool descriptions)
         system_prompt = self._build_system_prompt()
         
-        # Build initial user prompt with multimodal content
+        # Build tools schema for API
+        tools_schema = self._build_tools_schema() if self.tool_bank else None
+        
+        # Build initial user message with multimodal content
         # If memory is enabled, prepend available resource IDs to query
         if memory:
             available_refs = []
@@ -283,59 +271,78 @@ class MultimodalAgent(BasicAgent):
         else:
             query_with_refs = query
         
-        user_content = [{"type": "text", "text": query_with_refs}]
+        # Build user message content (multimodal content list)
+        initial_user_content = [{"type": "text", "text": query_with_refs}]
         
-        # Add images (marked as initial for later filtering)
+        # Add images (marked as initial for memory system)
         if images:
             for img in images:
                 if isinstance(img, str):
-                    user_content.append({"type": "image", "image": img, "initial": True})
+                    initial_user_content.append({"type": "image", "image": img, "initial": True})
                 elif isinstance(img, dict):
-                    user_content.append({"type": "image", "initial": True, **img})
+                    initial_user_content.append({"type": "image", "initial": True, **img})
         
-        # Add videos (marked as initial for later filtering)
+        # Add videos (marked as initial for memory system)
         if videos:
             for vid in videos:
                 if isinstance(vid, str):
-                    user_content.append({"type": "video", "video": vid, "initial": True})
+                    initial_user_content.append({"type": "video", "video": vid, "initial": True})
                 elif isinstance(vid, dict):
-                    user_content.append({"type": "video", "initial": True, **vid})
+                    initial_user_content.append({"type": "video", "initial": True, **vid})
         
-        # ReAct loop
+        # Initialize conversation history in OpenAI message format
+        # conversation_history will accumulate: user, assistant, tool messages
+        conversation_history = [
+            {"role": "user", "content": initial_user_content}
+        ]
+        
+        # Track execution history for logging
         history = []
-        conversation_context = user_content.copy()
         
         for iteration in range(self.max_iterations):
-            # Remove initial media after first iteration (model must use get_images to view)
-            if iteration >= 1:
-                conversation_context = [msg for msg in conversation_context if not msg.get("initial")]
+            # After first iteration, remove initial media from the first user message
+            # (model must use get_images to view them again)
+            if iteration >= 1 and conversation_history:
+                first_msg = conversation_history[0]
+                if first_msg.get("role") == "user" and isinstance(first_msg.get("content"), list):
+                    first_msg["content"] = [
+                        item for item in first_msg["content"] 
+                        if not item.get("initial")
+                    ]
             
             if verbose:
                 logger.info(f"\n{'─'*80}")
                 logger.info(f"🔄 ITERATION {iteration + 1}")
                 logger.info(f"{'─'*80}")
             
-            # Call LLM
+            # Call LLM with full conversation history
             try:
                 if verbose:
                     logger.info(f"\n📥 INPUT TO LLM:")
-                    # Show conversation context (without system)
-                    for idx, msg in enumerate(conversation_context, 1):
-                        if msg.get("type") == "text":
-                            text = msg.get("text", "")
-                            logger.info(f"   [{idx}] {text}")
+                    logger.info(f"   Conversation history: {len(conversation_history)} message(s)")
+                    for idx, msg in enumerate(conversation_history, 1):
+                        role = msg.get("role", "unknown")
+                        content = msg.get("content", "")
+                        if isinstance(content, list):
+                            logger.info(f"   [{idx}] role={role}, content items: {len(content)}")
+                        elif isinstance(content, str):
+                            logger.info(f"   [{idx}] role={role}, text: {content[:80]}...")
                         else:
-                            logger.info(f"   [{idx}] [multimodal: {msg.get('type')}]")
+                            logger.info(f"   [{idx}] role={role}")
                 
-                response = await self._call_llm(system_prompt, conversation_context)
+                response = await self._call_llm(system_prompt, conversation_history, tools_schema)
                 
                 if verbose:
                     logger.info(f"\n📤 LLM RESPONSE:")
-                    logger.info(f"{response}")
+                    logger.info(f"Answer: {response.get('answer', '')[:200]}...")
+                    if response.get('tool_calls'):
+                        logger.info(f"Tool calls: {len(response['tool_calls'])} tool(s)")
                     
             except Exception as e:
                 error_msg = f"Error calling LLM: {str(e)}"
                 logger.error(error_msg)
+                import traceback
+                traceback.print_exc()
                 if return_history:
                     return {
                         "response": error_msg,
@@ -344,27 +351,47 @@ class MultimodalAgent(BasicAgent):
                     }
                 return error_msg
             
-            has_tool, tool_name, tool_args, thought = self._detect_tool(response)
+            # Check if model wants to call tools
+            tool_calls = response.get("tool_calls", [])
             
-            if has_tool:
-                if memory and thought:
-                    memory.log_think(thought, self.special_think_token)
+            if tool_calls:
+                # Model wants to call tools
+                assistant_content = response.get("answer", "") or ""
                 
-                original_properties = None
-                resolved_args_str = tool_args
+                # Log thinking if present
+                if memory and assistant_content:
+                    memory.log_think(assistant_content)
                 
-                if memory:
-                    try:
-                        tool_args_dict = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
-                        if isinstance(tool_args_dict, dict):
-                            original_properties = tool_args_dict.copy()
-                            # Special handling: get_images needs IDs, not paths
-                            if tool_name != "get_images":
-                                resolved_args = memory.resolve_ids(tool_args_dict)
-                                resolved_args_str = json.dumps(resolved_args)
-                    except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
-                        logger.debug(f"Failed to resolve IDs in tool args: {e}")
-                        pass
+                # Add assistant message with tool_calls to conversation history
+                assistant_message = {
+                    "role": "assistant",
+                    "content": assistant_content,
+                    "tool_calls": tool_calls
+                }
+                conversation_history.append(assistant_message)
+                
+                # Process each tool call
+                for tool_call in tool_calls:
+                    tool_id = tool_call["id"]
+                    tool_name = tool_call["function"]["name"]
+                    tool_args = tool_call["function"]["arguments"]
+                    
+                    # Resolve IDs if memory enabled
+                    original_properties = None
+                    resolved_args_str = tool_args
+                    
+                    if memory:
+                        try:
+                            tool_args_dict = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
+                            if isinstance(tool_args_dict, dict):
+                                original_properties = tool_args_dict.copy()
+                                # Special handling: get_images needs IDs, not paths
+                                if tool_name != "get_images":
+                                    resolved_args = memory.resolve_ids(tool_args_dict)
+                                    resolved_args_str = json.dumps(resolved_args)
+                        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
+                            logger.debug(f"Failed to resolve IDs in tool args: {e}")
+                            pass
                 
                 tool_result = self._call_tool(tool_name, resolved_args_str)
                 
@@ -373,38 +400,44 @@ class MultimodalAgent(BasicAgent):
                     image_ids = tool_result["_get_images_ids"]
                     observation = tool_result.get("message", "Images loaded")
                     
-                    # Clear all previous images and videos (model explicitly chooses what to view each time)
-                    conversation_context = [msg for msg in conversation_context 
-                                          if msg.get("type") not in ["image", "video"]]
-                    
-                    # Add observation text first
-                    conversation_context.append({
-                        "type": "text",
-                        "text": f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
+                    # Add tool response message
+                    conversation_history.append({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": observation
                     })
                     
-                    # Then add requested images/videos with descriptive labels
+                    # Build new user message with requested images
+                    new_user_content = []
+                    
                     if memory:
                         for img_id in image_ids:
-                            # Agent retrieves description from memory
+                            # Get description from memory
                             desc = memory.get_description(img_id) or "Generated content"
                             
-                            # Add text label: "img_1: Cropped img_0 at [...]"
-                            conversation_context.append({
+                            # Add text label
+                            new_user_content.append({
                                 "type": "text",
                                 "text": f"{img_id}: {desc}"
                             })
                             
-                            # Add actual image or video based on ID prefix
+                            # Add actual media
                             file_path = memory.get_file_path(img_id)
                             if file_path:
                                 media_type = "video" if img_id.startswith("vid_") else "image"
-                                conversation_context.append({
+                                new_user_content.append({
                                     "type": media_type,
                                     media_type: file_path
                                 })
                     
-                    # Log to memory (thought already logged at line 347)
+                    # Add new user message with images to conversation
+                    if new_user_content:
+                        conversation_history.append({
+                            "role": "user",
+                            "content": new_user_content
+                        })
+                    
+                    # Log to memory
                     if memory:
                         memory.log_action(
                             tool=tool_name,
@@ -412,7 +445,15 @@ class MultimodalAgent(BasicAgent):
                             observation=observation
                         )
                     
-                    continue  # Skip normal processing
+                    # Record history
+                    history.append({
+                        "iteration": iteration + 1,
+                        "action": tool_name,
+                        "action_input": tool_args,
+                        "observation": observation,
+                    })
+                    
+                    continue  # Skip normal processing for get_images
                 
                 if isinstance(tool_result, dict):
                     output_image = tool_result.get("output_image")
@@ -508,16 +549,19 @@ class MultimodalAgent(BasicAgent):
                         # Without memory: don't save, only format observation data
                         observation = self._format_observation(observation_data, tool_name) if observation_data else "Output generated"
                     
-                    # Add text to context
-                    conversation_context.append({
-                        "type": "text",
-                        "text": f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
+                    # Add tool message to conversation history
+                    conversation_history.append({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": observation
                     })
                     
-                    # Only add image/video when memory is disabled
+                    # If memory is disabled, add image/video directly to next user message
                     if not memory:
                         from PIL import Image
                         import tempfile
+                        
+                        user_content_with_media = []
                         
                         if output_type == "img":
                             # Save image to temp file for API compatibility
@@ -533,7 +577,7 @@ class MultimodalAgent(BasicAgent):
                             else:
                                 image_path = output_object  # Already a path
                             
-                            conversation_context.append({
+                            user_content_with_media.append({
                                 "type": "image",
                                 "image": image_path
                             })
@@ -541,9 +585,16 @@ class MultimodalAgent(BasicAgent):
                             # Ensure video is a path string
                             video_path = output_object if isinstance(output_object, str) else str(output_object)
                             
-                            conversation_context.append({
+                            user_content_with_media.append({
                                 "type": "video",
                                 "video": video_path
+                            })
+                        
+                        # Add user message with media
+                        if user_content_with_media:
+                            conversation_history.append({
+                                "role": "user",
+                                "content": user_content_with_media
                             })
                     
                 elif memory:
@@ -561,18 +612,18 @@ class MultimodalAgent(BasicAgent):
                         if verbose:
                             logger.warning(f"Failed to log action to memory: {e}")
                     
-                    # Add to context
-                    context_text = f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
-                    conversation_context.append({
-                        "type": "text",
-                        "text": context_text
+                    # Add tool message to conversation history
+                    conversation_history.append({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": observation
                     })
                 else:
-                    # No output_object and no memory: just add text to context
-                    context_text = f"{thought}\n{self.special_func_token} {tool_name}\n{self.special_args_token} {tool_args}\n{self.special_obs_token} {observation}"
-                    conversation_context.append({
-                        "type": "text",
-                        "text": context_text
+                    # No output_object and no memory: add tool message
+                    conversation_history.append({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": observation
                     })
                 
                 if verbose:
@@ -583,15 +634,17 @@ class MultimodalAgent(BasicAgent):
                 # Record history
                 history.append({
                     "iteration": iteration + 1,
-                    "thought": thought,
                     "action": tool_name,
                     "action_input": tool_args,
                     "observation": observation,
                 })
                 
             else:
+                # No tool calls - this is the final answer
+                final_answer = response.get("answer", "")
+                
                 if memory:
-                    memory.log_answer(response)
+                    memory.log_answer(final_answer)
                     memory.end_task(success=True)
                     if verbose:
                         logger.info(f"💾 Saved trace to: {memory.task_dir}/trace.json")
@@ -604,7 +657,7 @@ class MultimodalAgent(BasicAgent):
                 
                 history.append({
                     "iteration": iteration + 1,
-                    "final_response": response,
+                    "final_response": final_answer,
                 })
                 
                 if verbose:
@@ -613,7 +666,7 @@ class MultimodalAgent(BasicAgent):
                     logger.info(f"{'='*80}")
                 
                 result = {
-                    "response": response,
+                    "response": final_answer,
                     "history": history,
                     "success": True,
                 }
@@ -622,7 +675,7 @@ class MultimodalAgent(BasicAgent):
                 
                 if return_history:
                     return result
-                return response
+                return final_answer
         
         final_msg = "Maximum iterations reached without completing the task."
         logger.warning(final_msg)
