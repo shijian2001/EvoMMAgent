@@ -246,10 +246,6 @@ class QAWrapper:
         if mm_kwargs:
             request_params["extra_body"] = {"mm_processor_kwargs": mm_kwargs}
 
-        # Debug: Print API request summary
-        import sys
-        print(f"📤 API: {len(request_params['messages'])} msgs, tools={len(tools) if tools else 0}, choice={tool_choice}", file=sys.stderr, flush=True)
-
         # Call API
         completion = await self.client.chat.completions.create(**request_params)
 

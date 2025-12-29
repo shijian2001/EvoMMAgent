@@ -254,14 +254,6 @@ class MultimodalAgent(BasicAgent):
         # Build tools schema for API
         tools_schema = self._build_tools_schema() if self.tool_bank else None
         
-        # Debug: Print what we're sending to the model
-        if verbose:
-            print(f"\n{'='*80}")
-            print(f"📝 System Prompt:\n{system_prompt}")
-            if tools_schema:
-                print(f"🛠️  Tools ({len(tools_schema)}): {[t['function']['name'] for t in tools_schema]}")
-            print(f"{'='*80}\n")
-        
         # Build initial user message with multimodal content
         # If memory is enabled, prepend available resource IDs to query
         if memory:
@@ -303,13 +295,6 @@ class MultimodalAgent(BasicAgent):
         conversation_history = [
             {"role": "user", "content": initial_user_content}
         ]
-        
-        # Debug: Print initial user message
-        if verbose:
-            text_items = [item for item in initial_user_content if item.get('type') == 'text']
-            image_items = [item for item in initial_user_content if item.get('type') == 'image']
-            video_items = [item for item in initial_user_content if item.get('type') == 'video']
-            print(f"💬 User: {text_items[0].get('text', '')[:150] if text_items else ''}... [{len(image_items)} img, {len(video_items)} vid]")
         
         # Track execution history for logging
         history = []
