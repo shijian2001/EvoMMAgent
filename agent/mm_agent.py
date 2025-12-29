@@ -181,18 +181,12 @@ class MultimodalAgent(BasicAgent):
             Dict with answer, tool_calls (if any), and other metadata
         """
         # Use the unified qa method from API pool with new signature
-        # 🔍 TEST: Force tool calling with specific tool
-        if tools:
-            tool_choice = {"type": "function", "function": {"name": "get_images"}}
-        else:
-            tool_choice = "none"
-        
         result = await self.api_pool.execute(
             "qa",
             system=system_prompt,
             messages=conversation_history,
             tools=tools,
-            tool_choice=tool_choice,
+            tool_choice="auto" if tools else "none",
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
@@ -257,24 +251,8 @@ class MultimodalAgent(BasicAgent):
         # Build system prompt (simplified, without tool descriptions)
         system_prompt = self._build_system_prompt()
         
-        # 🔍 Debug 1: Verify system prompt
-        if verbose:
-            print(f"\n{'='*80}", flush=True)
-            print(f"📝 System Prompt (first 500 chars):", flush=True)
-            print(system_prompt[:500], flush=True)
-            print(f"{'='*80}\n", flush=True)
-        
         # Build tools schema for API
         tools_schema = self._build_tools_schema() if self.tool_bank else None
-        
-        # 🔍 Debug 2: Verify tools schema
-        if verbose and tools_schema:
-            import json
-            print(f"\n{'='*80}", flush=True)
-            print(f"🛠️  Tools Schema ({len(tools_schema)} tools):", flush=True)
-            print(f"   First tool: {json.dumps(tools_schema[0], indent=2)[:300]}...", flush=True)
-            print(f"   All tool names: {[t['function']['name'] for t in tools_schema]}", flush=True)
-            print(f"{'='*80}\n", flush=True)
         
         # Build initial user message with multimodal content
         # If memory is enabled, prepend available resource IDs to query
