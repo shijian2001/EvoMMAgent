@@ -253,6 +253,25 @@ class QAWrapper:
         
         # Extract response
         message = completion.choices[0].message
+        
+        # 🔍 Debug 3: Verify API raw response
+        import sys
+        print(f"\n{'='*80}", file=sys.stderr, flush=True)
+        print(f"📤 API Response:", file=sys.stderr, flush=True)
+        print(f"   content (first 200 chars): {message.content[:200] if message.content else None}...", file=sys.stderr, flush=True)
+        print(f"   has 'tool_calls' attr: {hasattr(message, 'tool_calls')}", file=sys.stderr, flush=True)
+        if hasattr(message, 'tool_calls'):
+            print(f"   tool_calls value: {message.tool_calls}", file=sys.stderr, flush=True)
+            if message.tool_calls:
+                print(f"   tool_calls length: {len(message.tool_calls)}", file=sys.stderr, flush=True)
+        else:
+            print(f"   tool_calls: (attribute not found)", file=sys.stderr, flush=True)
+        print(f"{'='*80}\n", file=sys.stderr, flush=True)
+        
+        # Exit after first response
+        print(f"\n🔍 DEBUG: Exiting after first API response for inspection.\n", file=sys.stderr, flush=True)
+        import sys
+        sys.exit(0)
         answer = message.content
         
         # Parse JSON if enabled

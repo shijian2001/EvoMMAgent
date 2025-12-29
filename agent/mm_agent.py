@@ -251,8 +251,24 @@ class MultimodalAgent(BasicAgent):
         # Build system prompt (simplified, without tool descriptions)
         system_prompt = self._build_system_prompt()
         
+        # 🔍 Debug 1: Verify system prompt
+        if verbose:
+            print(f"\n{'='*80}", flush=True)
+            print(f"📝 System Prompt (first 500 chars):", flush=True)
+            print(system_prompt[:500], flush=True)
+            print(f"{'='*80}\n", flush=True)
+        
         # Build tools schema for API
         tools_schema = self._build_tools_schema() if self.tool_bank else None
+        
+        # 🔍 Debug 2: Verify tools schema
+        if verbose and tools_schema:
+            import json
+            print(f"\n{'='*80}", flush=True)
+            print(f"🛠️  Tools Schema ({len(tools_schema)} tools):", flush=True)
+            print(f"   First tool: {json.dumps(tools_schema[0], indent=2)[:300]}...", flush=True)
+            print(f"   All tool names: {[t['function']['name'] for t in tools_schema]}", flush=True)
+            print(f"{'='*80}\n", flush=True)
         
         # Build initial user message with multimodal content
         # If memory is enabled, prepend available resource IDs to query
