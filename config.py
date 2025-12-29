@@ -12,7 +12,7 @@ class AgentConfig:
     max_iterations: int = 10
     
     # LLM settings
-    temperature: float = 1.0
+    temperature: float = 0.2
     max_tokens: Optional[int] = None  # None means no limit
     
     # Memory settings

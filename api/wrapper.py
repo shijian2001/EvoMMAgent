@@ -25,7 +25,7 @@ class QAWrapper:
         api_key: str, 
         base_url: str = "http://redservingapi.devops.xiaohongshu.com/v1",
         max_retries: int = 5,
-        temperature: float = 1.0,
+        temperature: float = 0.2,
         max_tokens: Optional[int] = None,
         parse_json: bool = True,
     ):
