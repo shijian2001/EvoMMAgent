@@ -186,7 +186,7 @@ class MultimodalAgent(BasicAgent):
             system=system_prompt,
             messages=conversation_history,
             tools=tools,
-            tool_choice="auto" if tools else "none",
+            tool_choice="required" if tools else "none",
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
