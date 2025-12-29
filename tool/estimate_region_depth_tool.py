@@ -26,7 +26,7 @@ class EstimateRegionDepthTool(ModelBasedTool):
                 "type": "string",
                 "description": "Image ID (e.g., 'img_0')"
             },
-            "bbox": {
+            "bbox_2d": {
                 "type": "array",
                 "items": {"type": "number"},
                 "minItems": 4,
@@ -40,9 +40,9 @@ class EstimateRegionDepthTool(ModelBasedTool):
                 "default": "mean"
             }
         },
-        "required": ["image", "bbox"]
+        "required": ["image", "bbox_2d"]
     }
-    example = '{"image": "img_0", "bbox": [0.1, 0.2, 0.5, 0.6], "mode": "mean"}'
+    example = '{"image": "img_0", "bbox_2d": [0.1, 0.2, 0.5, 0.6], "mode": "mean"}'
     
     def load_model(self, device: str) -> None:
         from transformers import AutoImageProcessor, AutoModelForDepthEstimation
@@ -70,14 +70,14 @@ class EstimateRegionDepthTool(ModelBasedTool):
         # Validate and parse parameters
         params_dict = self.parse_params(params)
         image_path = params_dict["image"]
-        bbox = params_dict["bbox"]
+        bbox_2d = params_dict["bbox_2d"]
         mode = params_dict.get("mode", "mean")
         
-        # Validate bbox
-        if not all(0 <= x <= 1.0 for x in bbox):
-            return {"error": "bbox values must be between 0 and 1"}
-        if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
-            return {"error": "invalid bbox: left >= right or top >= bottom"}
+        # Validate bbox_2d
+        if not all(0 <= x <= 1.0 for x in bbox_2d):
+            return {"error": "bbox_2d values must be between 0 and 1"}
+        if bbox_2d[0] >= bbox_2d[2] or bbox_2d[1] >= bbox_2d[3]:
+            return {"error": "invalid bbox_2d: left >= right or top >= bottom"}
         
         try:
             from PIL import Image
@@ -86,11 +86,11 @@ class EstimateRegionDepthTool(ModelBasedTool):
             image = image_processing(image_path)
             W, H = image.size
 
-            # Convert normalized bbox to pixel coordinates
-            x1 = int(bbox[0] * W)
-            y1 = int(bbox[1] * H)
-            x2 = int(bbox[2] * W)
-            y2 = int(bbox[3] * H)
+            # Convert normalized bbox_2d to pixel coordinates
+            x1 = int(bbox_2d[0] * W)
+            y1 = int(bbox_2d[1] * H)
+            x2 = int(bbox_2d[2] * W)
+            y2 = int(bbox_2d[3] * H)
 
             inputs = self.image_processor(images=image, return_tensors="pt")
             inputs = {k: v.to(self.device) for k, v in inputs.items()}

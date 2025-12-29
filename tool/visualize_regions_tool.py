@@ -27,13 +27,13 @@ class VisualizeRegionsOnImageTool(BasicTool):
             },
             "regions": {
                 "type": "array",
-                "description": "List of regions to label, each with 'bbox' and optional 'label'",
+                "description": "List of regions to label, each with 'bbox_2d' and optional 'label'",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "bbox": {
+                        "bbox_2d": {
                             "type": "array",
-                            "description": "Normalized bounding box [x1, y1, x2, y2]",
+                            "description": "Normalized bounding box [x1, y1, x2, y2] where values are between 0 and 1",
                             "items": {"type": "number"},
                             "minItems": 4,
                             "maxItems": 4
@@ -43,7 +43,7 @@ class VisualizeRegionsOnImageTool(BasicTool):
                             "description": "Optional label text for the region"
                         }
                     },
-                    "required": ["bbox"]
+                    "required": ["bbox_2d"]
                 }
             },
             "color": {
@@ -57,7 +57,7 @@ class VisualizeRegionsOnImageTool(BasicTool):
         },
         "required": ["image", "regions"]
     }
-    example = '{"image": "img_0", "regions": [{"bbox": [0.1, 0.1, 0.5, 0.5], "label": "Object A"}, {"bbox": [0.6, 0.6, 0.9, 0.9], "label": "Object B"}]}'
+    example = '{"image": "img_0", "regions": [{"bbox_2d": [0.1, 0.1, 0.5, 0.5], "label": "Object A"}, {"bbox_2d": [0.6, 0.6, 0.9, 0.9], "label": "Object B"}]}'
     
     def call(self, params: Union[str, Dict]) -> str:
         """Execute the visualization operation.
@@ -103,9 +103,9 @@ class VisualizeRegionsOnImageTool(BasicTool):
             
             # Draw each region
             for obj in regions:
-                bbox = obj['bbox']
+                bbox_2d = obj['bbox_2d']
                 # Convert normalized coordinates to pixel coordinates
-                bbox_pixels = (bbox[0] * W, bbox[1] * H, bbox[2] * W, bbox[3] * H)
+                bbox_pixels = (bbox_2d[0] * W, bbox_2d[1] * H, bbox_2d[2] * W, bbox_2d[3] * H)
                 
                 # Draw rectangle
                 draw.rectangle(bbox_pixels, outline=color, width=width)

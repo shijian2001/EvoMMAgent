@@ -242,9 +242,25 @@ class QAWrapper:
             request_params["tools"] = tools
             request_params["tool_choice"] = tool_choice
         
+        # Build extra_body with all custom params
+        extra_body = {}
+        
         # Add multimodal processor kwargs if present (only for Qwen models)
         if mm_kwargs:
-            request_params["extra_body"] = {"mm_processor_kwargs": mm_kwargs}
+            extra_body["mm_processor_kwargs"] = mm_kwargs
+        
+        # Add logit_bias to vLLM sampling params when using tools
+        if tools:
+            # Prevent tool call format errors by discouraging specific tokens
+            extra_body["logit_bias"] = {
+                147926: -100,
+                151478: -100,
+                30543: -100
+            }
+        
+        # Apply extra_body if not empty
+        if extra_body:
+            request_params["extra_body"] = extra_body
 
         # Call API
         completion = await self.client.chat.completions.create(**request_params)

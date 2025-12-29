@@ -109,7 +109,7 @@ class DetectFacesTool(ModelBasedTool):
                 label = f'face {i+1}' if i > 0 else 'face'
                 
                 regions.append({
-                    "bbox": normalized_bbox,
+                    "bbox_2d": normalized_bbox,
                     "label": label
                 })
             

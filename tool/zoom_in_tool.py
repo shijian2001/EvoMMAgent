@@ -23,7 +23,7 @@ class ZoomInTool(BasicTool):
                 "type": "string",
                 "description": "Image ID (e.g., 'img_0')"
             },
-            "bbox": {
+            "bbox_2d": {
                 "type": "array",
                 "items": {"type": "number"},
                 "minItems": 4,
@@ -36,22 +36,22 @@ class ZoomInTool(BasicTool):
                 "exclusiveMinimum": 1.0
             }
         },
-        "required": ["image", "bbox", "zoom_factor"]
+        "required": ["image", "bbox_2d", "zoom_factor"]
     }
-    example = '{"image": "img_0", "bbox": [0.25, 0.25, 0.75, 0.75], "zoom_factor": 2.0}'
+    example = '{"image": "img_0", "bbox_2d": [0.25, 0.25, 0.75, 0.75], "zoom_factor": 2.0}'
     
     def call(self, params: Union[str, Dict]) -> Dict:
         params_dict = self.parse_params(params)
         
         image_path = params_dict["image"]
-        bbox = params_dict["bbox"]
+        bbox_2d = params_dict["bbox_2d"]
         zoom_factor = params_dict["zoom_factor"]
         
         # Validate
-        if not all(0 <= x <= 1.0 for x in bbox):
-            return {"error": "bbox values must be between 0 and 1"}
-        if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
-            return {"error": "invalid bbox: left >= right or top >= bottom"}
+        if not all(0 <= x <= 1.0 for x in bbox_2d):
+            return {"error": "bbox_2d values must be between 0 and 1"}
+        if bbox_2d[0] >= bbox_2d[2] or bbox_2d[1] >= bbox_2d[3]:
+            return {"error": "invalid bbox_2d: left >= right or top >= bottom"}
         if zoom_factor <= 1:
             return {"error": "zoom_factor must be > 1"}
         
@@ -63,7 +63,7 @@ class ZoomInTool(BasicTool):
         
         # Crop
         W, H = image.size
-        crop_box = (int(bbox[0] * W), int(bbox[1] * H), int(bbox[2] * W), int(bbox[3] * H))
+        crop_box = (int(bbox_2d[0] * W), int(bbox_2d[1] * H), int(bbox_2d[2] * W), int(bbox_2d[3] * H))
         cropped = image.crop(crop_box)
         
         # Zoom (resize)
@@ -76,6 +76,6 @@ class ZoomInTool(BasicTool):
     def generate_description(self, properties, observation):
         """Generate description for zoomed image."""
         img = properties.get("image", "image")
-        bbox = properties.get("bbox", [])
+        bbox_2d = properties.get("bbox_2d", [])
         factor = properties.get("factor", 2)
-        return f"Zoomed in {img} at bbox {bbox} by {factor}x"
+        return f"Zoomed in {img} at bbox_2d {bbox_2d} by {factor}x"

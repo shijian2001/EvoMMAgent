@@ -75,14 +75,14 @@ class LocalizeObjectsTool(ModelBasedTool):
                 label_out = f"{label_str}-{obj_cnt[label_str]}" if obj_cnt[label_str] > 1 else label_str
                 regions.append({
                     "label": label_out,
-                    "bbox": bbox,
+                    "bbox_2d": bbox,
                     "score": round(score.item(), 4)
                 })
             
             visualize_tool = VisualizeRegionsOnImageTool()
             visualize_params = {
                 "image": image_path,
-                "regions": [{"bbox": r["bbox"], "label": r["label"]} for r in regions]
+                "regions": [{"bbox_2d": r["bbox_2d"], "label": r["label"]} for r in regions]
             }
             output_image_result = visualize_tool.call(visualize_params)
             output_image = output_image_result.get("output_image")

@@ -22,7 +22,7 @@ class CropTool(BasicTool):
                 "type": "string",
                 "description": "Image ID (e.g., 'img_0')"
             },
-            "bbox": {
+            "bbox_2d": {
                 "type": "array",
                 "items": {"type": "number"},
                 "minItems": 4,
@@ -30,21 +30,21 @@ class CropTool(BasicTool):
                 "description": "Bounding box as [left, top, right, bottom], values between 0 and 1"
             }
         },
-        "required": ["image", "bbox"]
+        "required": ["image", "bbox_2d"]
     }
-    example = '{"image": "img_0", "bbox": [0.1, 0.2, 0.5, 0.6]}'
+    example = '{"image": "img_0", "bbox_2d": [0.1, 0.2, 0.5, 0.6]}'
     
     def call(self, params: Union[str, Dict]) -> Dict:
         params_dict = self.parse_params(params)
         
         image_path = params_dict["image"]
-        bbox = params_dict["bbox"]
+        bbox_2d = params_dict["bbox_2d"]
         
-        # Validate bbox
-        if not all(0 <= x <= 1.0 for x in bbox):
-            return {"error": "bbox values must be between 0 and 1"}
-        if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
-            return {"error": "invalid bbox: left >= right or top >= bottom"}
+        # Validate bbox_2d
+        if not all(0 <= x <= 1.0 for x in bbox_2d):
+            return {"error": "bbox_2d values must be between 0 and 1"}
+        if bbox_2d[0] >= bbox_2d[2] or bbox_2d[1] >= bbox_2d[3]:
+            return {"error": "invalid bbox_2d: left >= right or top >= bottom"}
         
         # Load image
         try:
@@ -54,7 +54,7 @@ class CropTool(BasicTool):
         
         # Crop
         W, H = image.size
-        crop_box = (int(bbox[0] * W), int(bbox[1] * H), int(bbox[2] * W), int(bbox[3] * H))
+        crop_box = (int(bbox_2d[0] * W), int(bbox_2d[1] * H), int(bbox_2d[2] * W), int(bbox_2d[3] * H))
         cropped = image.crop(crop_box)
         
         # Return dict with PIL Image object
@@ -63,5 +63,5 @@ class CropTool(BasicTool):
     def generate_description(self, properties, observation):
         """Generate description for cropped image."""
         img = properties.get("image", "image")
-        bbox = properties.get("bbox", [])
-        return f"Cropped {img} at bbox {bbox}"
+        bbox_2d = properties.get("bbox_2d", [])
+        return f"Cropped {img} at bbox_2d {bbox_2d}"

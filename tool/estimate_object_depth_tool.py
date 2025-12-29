@@ -80,12 +80,12 @@ class EstimateObjectDepthTool(BasicTool):
                     "error": "Object not found"
                 }
             
-            # Use the best match object's bbox (highest score)
+            # Use the best match object's bbox_2d (highest score)
             regions = localize_data["regions"]
             best_match_idx = np.argmax([region.get("score", 0) for region in regions])
-            bbox = regions[best_match_idx]["bbox"]
+            bbox_2d = regions[best_match_idx]["bbox_2d"]
             
-            # bbox is already normalized from localize_objects
+            # bbox_2d is already normalized from localize_objects
             # Use EstimateRegionDepth to estimate depth
             estimate_depth_tool_class = TOOL_REGISTRY.get("estimate_region_depth")
             if estimate_depth_tool_class is None:
@@ -94,7 +94,7 @@ class EstimateObjectDepthTool(BasicTool):
             estimate_depth_tool = estimate_depth_tool_class()
             depth_params = {
                 "image": image_path,
-                "bbox": bbox,
+                "bbox_2d": bbox_2d,
                 "mode": mode
             }
             # estimate_region_depth returns dict
