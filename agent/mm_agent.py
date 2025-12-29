@@ -181,12 +181,18 @@ class MultimodalAgent(BasicAgent):
             Dict with answer, tool_calls (if any), and other metadata
         """
         # Use the unified qa method from API pool with new signature
+        # 🔍 TEST: Force tool calling with specific tool
+        if tools:
+            tool_choice = {"type": "function", "function": {"name": "get_images"}}
+        else:
+            tool_choice = "none"
+        
         result = await self.api_pool.execute(
             "qa",
             system=system_prompt,
             messages=conversation_history,
             tools=tools,
-            tool_choice="required" if tools else "none",
+            tool_choice=tool_choice,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
