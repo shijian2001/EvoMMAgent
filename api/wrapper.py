@@ -246,6 +246,23 @@ class QAWrapper:
         if mm_kwargs:
             request_params["extra_body"] = {"mm_processor_kwargs": mm_kwargs}
 
+        # Debug: Log API request details (truncate images for readability)
+        logger.debug(f"📤 API Request:")
+        logger.debug(f"   Model: {request_params['model']}")
+        logger.debug(f"   Messages: {len(request_params['messages'])} message(s)")
+        for idx, msg in enumerate(request_params['messages']):
+            role = msg.get('role')
+            content = msg.get('content', '')
+            if isinstance(content, list):
+                logger.debug(f"     [{idx}] {role}: {len(content)} items")
+            elif isinstance(content, str):
+                logger.debug(f"     [{idx}] {role}: {content[:100]}...")
+        if tools:
+            logger.debug(f"   Tools: {len(tools)} tools - {[t['function']['name'] for t in tools]}")
+            logger.debug(f"   Tool choice: {tool_choice}")
+        else:
+            logger.debug(f"   Tools: None")
+
         # Call API
         completion = await self.client.chat.completions.create(**request_params)
 

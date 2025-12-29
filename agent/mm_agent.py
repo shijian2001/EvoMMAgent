@@ -186,7 +186,7 @@ class MultimodalAgent(BasicAgent):
             system=system_prompt,
             messages=conversation_history,
             tools=tools,
-            tool_choice="required" if tools else "none",
+            tool_choice="auto" if tools else "none",
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
@@ -254,6 +254,19 @@ class MultimodalAgent(BasicAgent):
         # Build tools schema for API
         tools_schema = self._build_tools_schema() if self.tool_bank else None
         
+        # Debug: Print what we're sending to the model
+        if verbose:
+            logger.info(f"\n{'='*80}")
+            logger.info(f"🔧 MODEL INPUT DEBUG")
+            logger.info(f"{'='*80}")
+            logger.info(f"📝 System Prompt:\n{system_prompt}\n")
+            if tools_schema:
+                logger.info(f"🛠️  Tools: {len(tools_schema)} tools")
+                logger.info(f"   Tool names: {[t['function']['name'] for t in tools_schema]}")
+            else:
+                logger.info(f"🛠️  Tools: None")
+            logger.info(f"{'='*80}\n")
+        
         # Build initial user message with multimodal content
         # If memory is enabled, prepend available resource IDs to query
         if memory:
@@ -295,6 +308,20 @@ class MultimodalAgent(BasicAgent):
         conversation_history = [
             {"role": "user", "content": initial_user_content}
         ]
+        
+        # Debug: Print initial user message
+        if verbose:
+            logger.info(f"💬 Initial User Message:")
+            text_items = [item for item in initial_user_content if item.get('type') == 'text']
+            image_items = [item for item in initial_user_content if item.get('type') == 'image']
+            video_items = [item for item in initial_user_content if item.get('type') == 'video']
+            if text_items:
+                logger.info(f"   Text: {text_items[0].get('text', '')[:200]}...")
+            if image_items:
+                logger.info(f"   Images: {len(image_items)} image(s)")
+            if video_items:
+                logger.info(f"   Videos: {len(video_items)} video(s)")
+            logger.info("")
         
         # Track execution history for logging
         history = []
