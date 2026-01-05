@@ -23,7 +23,7 @@ async def main():
     # ============================================================
     agent_config = {
         "tool_bank": [
-            "ocr",
+            # "ocr",
             "get_images",
             "zoom_in", 
             "calculator", 
@@ -37,12 +37,12 @@ async def main():
             "get_text2images_similarity"
         ],
         "model_name": "qwen-2.5-vl-72b-instruct",
-        "max_tokens": 2048,
-        "temperature": 0.0,  # Use 0 for deterministic evaluation
+        "max_tokens": 10000,
+        "temperature": 0.2,
         "enable_memory": True,
-        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20251223",
+        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260106",
         "max_retries": 10,
-        "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",  # Use MMAgent template
+        "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",
         "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
         "base_url": "http://localhost:8000/v1",
         "api_keys": ["dummy-key"],
@@ -53,7 +53,7 @@ async def main():
         jsonl_path="data/eval/image/BLINK/blink_data.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/20251223/blink/qwen2.5_72b/ours",
+        output_dir="eval_results/20260106/blink/qwen2.5_72b/ours",
         batch_size=100,
         max_concurrent=10,
         verbose=True

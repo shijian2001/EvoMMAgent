@@ -103,6 +103,7 @@ class EstimateRegionDepthTool(ModelBasedTool):
                 target_sizes=[(H, W)],
             )
             depth_map = processed_outputs[0]["predicted_depth"].squeeze().detach().cpu().numpy()
+            depth_map = depth_map.max() - depth_map
 
             # Extract depth values from the region
             region_depth = depth_map[y1:y2, x1:x2]
@@ -123,4 +124,3 @@ class EstimateRegionDepthTool(ModelBasedTool):
             return {"error": f"Image file not found: {str(e)}"}
         except Exception as e:
             return {"error": f"Error estimating depth: {str(e)}"}
-

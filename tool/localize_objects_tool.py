@@ -1,4 +1,4 @@
-"""Tool for localizing objects in images with bounding boxes using transformers Grounding DINO."""
+"""Tool for localizing objects in images with bounding boxes using SAM3."""
 
 import json
 from typing import Union, Dict, List
@@ -8,28 +8,29 @@ from tool.base_tool import ModelBasedTool, register_tool
 from tool.utils.image_utils import image_processing
 from tool.visualize_regions_tool import VisualizeRegionsOnImageTool
 
+
 @register_tool(name="localize_objects")
 class LocalizeObjectsTool(ModelBasedTool):
     name = "localize_objects"
-    model_id = "grounding_dino"
+    model_id = "sam3"
     
-    description_en = "Localize objects with normalized bounding boxes [x1, y1, x2, y2] where values are between 0 and 1."
-    description_zh = "定位对象并返回归一化边界框 [x1, y1, x2, y2]，坐标值在 0 到 1 之间"
+    description_en = "Localize objects with normalized bounding boxes [x1, y1, x2, y2] where values are between 0 and 1 using SAM3."
+    description_zh = "使用SAM3定位对象并返回归一化边界框 [x1, y1, x2, y2]，坐标值在 0 到 1 之间"
     parameters = {
         "type": "object",
         "properties": {
             "image": {"type": "string", "description": "Image ID (e.g., 'img_0')"},
-            "objects": {"type": "array", "items": {"type": "string"}, "description": "A list of object names to localize. e.g. ['dog', 'cat', 'person']. The model might not be able to detect rare objects or objects with complex descriptions."}
+            "objects": {"type": "array", "items": {"type": "string"}, "description": "A list of object names to localize. e.g. ['dog', 'cat', 'person']."}
         },
         "required": ["image", "objects"]
     }
     example = '{"image": "img_0", "objects": ["dog", "cat"]}'
 
     def load_model(self, device: str) -> None:
-        from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
-        from tool.model_config import GROUNDING_DINO_PATH
-        self.processor = AutoProcessor.from_pretrained(GROUNDING_DINO_PATH)
-        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(GROUNDING_DINO_PATH).to(device)
+        from transformers import Sam3Processor, Sam3Model
+        from tool.model_config import SAM3_MODEL_PATH
+        self.processor = Sam3Processor.from_pretrained(SAM3_MODEL_PATH)
+        self.model = Sam3Model.from_pretrained(SAM3_MODEL_PATH).to(device)
         self.device = device
         self.is_loaded = True
 
@@ -43,42 +44,54 @@ class LocalizeObjectsTool(ModelBasedTool):
             }
         try:
             image = image_processing(image_path)
-            text_labels = [objects]
-            inputs = self.processor(images=image, text=text_labels, return_tensors="pt").to(self.device)
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-            results = self.processor.post_process_grounded_object_detection(
-                outputs,
-                inputs.input_ids,
-                threshold=0.4,
-                text_threshold=0.3,
-                target_sizes=[image.size[::-1]]
-            )
-            result = results[0]
+            W, H = image.size
+            
             regions = []
             obj_cnt = {}
             
-            # Get image dimensions for normalization
-            W, H = image.size
+            # Process each object separately with SAM3
+            for obj_name in objects:
+                # Prepare inputs for SAM3
+                inputs = self.processor(images=image, text=obj_name, return_tensors="pt").to(self.device)
+                
+                with torch.no_grad():
+                    outputs = self.model(**inputs)
+                
+                # Post-process to get instance segmentation results
+                results = self.processor.post_process_instance_segmentation(
+                    outputs,
+                    threshold=0.5,
+                    mask_threshold=0.5,
+                    target_sizes=inputs.get("original_sizes").tolist()
+                )[0]
+                
+                boxes = results["boxes"]
+                scores = results["scores"]
+                
+                # Filter by score > 0.50 and process results
+                for box, score in zip(boxes, scores):
+                    score_val = score.item()
+                    if score_val < 0.50:
+                        continue
+                    
+                    # Convert box to list and normalize to [0, 1] range
+                    box_list = box.tolist()
+                    bbox = [
+                        round(float(box_list[0]) / W, 4),  # x1
+                        round(float(box_list[1]) / H, 4),  # y1
+                        round(float(box_list[2]) / W, 4),  # x2
+                        round(float(box_list[3]) / H, 4)   # y2
+                    ]
+                    
+                    obj_cnt[obj_name] = obj_cnt.get(obj_name, 0) + 1
+                    label_out = f"{obj_name}-{obj_cnt[obj_name]}" if obj_cnt[obj_name] > 1 else obj_name
+                    regions.append({
+                        "label": label_out,
+                        "bbox_2d": bbox,
+                        "score": round(score_val, 4)
+                    })
             
-            for box, score, label in zip(result["boxes"], result["scores"], result["labels"]):
-                # Normalize bbox to [0, 1] range
-                box_list = box.tolist()
-                bbox = [
-                    round(float(box_list[0]) / W, 4),  # x1
-                    round(float(box_list[1]) / H, 4),  # y1
-                    round(float(box_list[2]) / W, 4),  # x2
-                    round(float(box_list[3]) / H, 4)   # y2
-                ]
-                label_str = str(label)
-                obj_cnt[label_str] = obj_cnt.get(label_str, 0) + 1
-                label_out = f"{label_str}-{obj_cnt[label_str]}" if obj_cnt[label_str] > 1 else label_str
-                regions.append({
-                    "label": label_out,
-                    "bbox_2d": bbox,
-                    "score": round(score.item(), 4)
-                })
-            
+            # Visualize results
             visualize_tool = VisualizeRegionsOnImageTool()
             visualize_params = {
                 "image": image_path,
@@ -106,4 +119,3 @@ class LocalizeObjectsTool(ModelBasedTool):
         else:
             objects_str = str(objects)
         return f"Localized {objects_str} in {img}"
-
