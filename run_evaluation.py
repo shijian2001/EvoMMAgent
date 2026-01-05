@@ -38,7 +38,7 @@ async def main():
         ],
         "model_name": "qwen-2.5-vl-72b-instruct",
         "max_tokens": 10000,
-        "temperature": 0.2,
+        "temperature": 0.0,
         "enable_memory": True,
         "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260106",
         "max_retries": 10,
