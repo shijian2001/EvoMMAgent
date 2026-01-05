@@ -377,21 +377,21 @@ class MultimodalAgent(BasicAgent):
                     tool_args = tool_call["function"]["arguments"]
                     
                     # Resolve IDs if memory enabled
-                    original_properties = None
-                    resolved_args_str = tool_args
-                    
-                    if memory:
-                        try:
-                            tool_args_dict = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
-                            if isinstance(tool_args_dict, dict):
-                                original_properties = tool_args_dict.copy()
-                                # Special handling: get_images needs IDs, not paths
-                                if tool_name != "get_images":
-                                    resolved_args = memory.resolve_ids(tool_args_dict)
-                                    resolved_args_str = json.dumps(resolved_args)
-                        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
-                            logger.debug(f"Failed to resolve IDs in tool args: {e}")
-                            pass
+                original_properties = None
+                resolved_args_str = tool_args
+                
+                if memory:
+                    try:
+                        tool_args_dict = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
+                        if isinstance(tool_args_dict, dict):
+                            original_properties = tool_args_dict.copy()
+                            # Special handling: get_images needs IDs, not paths
+                            if tool_name != "get_images":
+                                resolved_args = memory.resolve_ids(tool_args_dict)
+                                resolved_args_str = json.dumps(resolved_args)
+                    except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
+                        logger.debug(f"Failed to resolve IDs in tool args: {e}")
+                        pass
                 
                 tool_result = self._call_tool(tool_name, resolved_args_str)
                 
@@ -406,6 +406,20 @@ class MultimodalAgent(BasicAgent):
                         "tool_call_id": tool_id,
                         "content": observation
                     })
+                    
+                    # Remove previous get_images user messages to avoid exceeding image limit
+                    # Keep only: initial user message, assistant messages, and tool messages
+                    filtered_history = []
+                    for i, msg in enumerate(conversation_history):
+                        if msg.get("role") == "user" and i > 0:  # Not the first user message
+                            # Skip user messages that contain images/videos (from previous get_images)
+                            content = msg.get("content", [])
+                            if isinstance(content, list):
+                                has_media = any(item.get("type") in ["image", "video"] for item in content)
+                                if has_media:
+                                    continue  # Skip this message - it's from a previous get_images
+                        filtered_history.append(msg)
+                    conversation_history = filtered_history
                     
                     # Build new user message with requested images
                     new_user_content = []
