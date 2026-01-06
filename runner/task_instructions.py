@@ -12,8 +12,8 @@ def get_task_instructions(special_answer_token: str = "\nAnswer:") -> dict:
     """
     return {
         "multi-choice": {
-            "en": f"You may think step-by-step to analyze the question, but you MUST end your response with your final answer in this EXACT format on a new line: {special_answer_token} [single letter only, e.g., A or B or C]. Do not add any explanation after the answer.",
-            "zh": f"你可以逐步思考来分析问题，但必须在回答的最后一行按以下精确格式输出最终答案：{special_answer_token} [仅单个字母，如 A 或 B 或 C]。答案后不要添加任何解释。",
+            "en": f"Think step-by-step to analyze the question. Provide your final answer in this EXACT format on a new line: {special_answer_token} [single capital letter]\n\nDo not include any text after the answer.",
+            "zh": f"逐步思考分析问题。按以下精确格式在新的一行给出最终答案：{special_answer_token} [单个大写字母]\n\n答案后不要包含任何文字。",
         },
         "open-ended": {
             "en": f"You may provide reasoning first, but you MUST end your response with your final answer in this format on a new line: {special_answer_token} [your concise answer]",
