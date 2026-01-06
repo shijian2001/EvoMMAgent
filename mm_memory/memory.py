@@ -62,11 +62,13 @@ class Memory:
             cls._task_counter += 1
             return f"{task_id:06d}"
     
-    def start_task(self, question: str) -> str:
+    def start_task(self, question: str, dataset_id: str = None, **metadata) -> str:
         """Start a new task.
         
         Args:
             question: User query
+            dataset_id: Optional dataset ID (e.g., sample idx from JSONL)
+            **metadata: Additional metadata (dataset, sub_task, type, etc.)
             
         Returns:
             task_id: Unique task ID
@@ -82,6 +84,16 @@ class Memory:
             },
             "trace": []
         }
+        
+        # Add dataset_id if provided
+        if dataset_id is not None:
+            self.trace_data["dataset_id"] = dataset_id
+        
+        # Add other metadata at top level
+        for key, value in metadata.items():
+            if value is not None and value != "":
+                self.trace_data[key] = value
+        
         self.ref_counters = {"img": 0, "vid": 0}
         self._path_to_id = {}
         self._id_to_description = {}

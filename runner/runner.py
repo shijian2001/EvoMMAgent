@@ -215,12 +215,18 @@ class Runner:
                 for img_path in sample['images']
             ]
             
-            # Run agent
+            # Run agent with metadata for memory trace
             result = await agent.act(
                 query=query,
                 images=image_paths,
                 verbose=False,
-                return_history=False
+                return_history=False,
+                task_metadata={
+                    "dataset_id": str(sample.get("idx", "unknown")),
+                    "dataset": sample.get("dataset", ""),
+                    "sub_task": sample.get("sub_task", ""),
+                    "type": sample.get("type", ""),
+                }
             )
             
             # Extract response
@@ -382,6 +388,15 @@ class Runner:
             by_subtask[subtask]["accuracy"] = round(c / t, 4) if t > 0 else 0
         
         stats["by_subtask"] = by_subtask
+        
+        # Add metadata for analyzer (always safe, even if memory_dir is None)
+        stats["metadata"] = {
+            "dataset_path": str(self.jsonl_path),
+            "image_dir": str(self.image_dir),
+            "model_name": self.agent_config.get("model_name", "unknown"),
+            "memory_dir": self.agent_config.get("memory_dir"),
+            "use_tools": self.use_tools,
+        }
         
         return stats
     

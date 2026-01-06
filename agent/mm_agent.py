@@ -200,6 +200,7 @@ class MultimodalAgent(BasicAgent):
             videos: Optional[List[Union[str, Dict]]] = None,
             verbose: bool = True,
             return_history: bool = False,
+            task_metadata: Optional[Dict] = None,
     ) -> Union[str, Dict]:
         """Execute a multimodal query with tool support using ReAct pattern.
         
@@ -209,6 +210,7 @@ class MultimodalAgent(BasicAgent):
             videos: Optional list of video paths/URLs or dicts with video params
             verbose: Whether to print execution steps
             return_history: Whether to return full execution history
+            task_metadata: Optional metadata for memory trace (dataset_id, dataset, sub_task, type, etc.)
             
         Returns:
             Final response string, or dict with response and history if return_history=True
@@ -230,7 +232,18 @@ class MultimodalAgent(BasicAgent):
         if self.enable_memory:
             from mm_memory import Memory
             memory = Memory(base_dir=self.memory_dir)
-            task_id = memory.start_task(query)
+            
+            # Extract dataset_id and metadata from task_metadata
+            dataset_id = None
+            metadata_kwargs = {}
+            if task_metadata:
+                dataset_id = task_metadata.get("dataset_id")
+                # Pass all other metadata keys
+                for key, value in task_metadata.items():
+                    if key != "dataset_id":
+                        metadata_kwargs[key] = value
+            
+            task_id = memory.start_task(query, dataset_id=dataset_id, **metadata_kwargs)
             
             if verbose:
                 logger.info(f"💾 Memory enabled: Task ID = {task_id}\n")
