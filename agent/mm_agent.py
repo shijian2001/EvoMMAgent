@@ -138,6 +138,43 @@ class MultimodalAgent(BasicAgent):
         )
     
     
+    def _clean_old_images(self, conversation_history: List[Dict[str, Any]]) -> None:
+        """Clean old images from conversation history, keeping only the most recent tool message images.
+        
+        This modifies conversation_history in place by removing all images except
+        those in the most recent tool message.
+        
+        Args:
+            conversation_history: List of conversation messages to clean
+        """
+        # Traverse from end to start, keep images in first tool message encountered
+        found_recent_tool_images = False
+        
+        for msg in reversed(conversation_history):
+            content = msg.get("content")
+            
+            # Skip non-list content
+            if not isinstance(content, list):
+                continue
+            
+            is_tool_msg = msg.get("role") == "tool"
+            has_images = any(item.get("type") in ["image", "image_url"] for item in content)
+            
+            # Keep images in the most recent tool message
+            if is_tool_msg and has_images and not found_recent_tool_images:
+                found_recent_tool_images = True
+                continue  # Keep this message's images
+            
+            # Remove images from all other messages
+            new_content = [item for item in content if item.get("type") not in ["image", "image_url", "video"]]
+            
+            if new_content:
+                msg["content"] = new_content
+            elif is_tool_msg:
+                # Tool messages must have content
+                text_items = [item.get("text", "") for item in content if item.get("type") == "text"]
+                msg["content"] = " ".join(text_items) if text_items else "Observation recorded"
+    
     def _build_system_prompt(self) -> str:
         """Build simplified system prompt using Jinja2 template.
         
@@ -313,25 +350,19 @@ class MultimodalAgent(BasicAgent):
         history = []
         
         for iteration in range(self.max_iterations):
-            # Remove input images from first user message starting from second iteration
-            # Also update text prompt to reflect images are now in memory
-            if iteration == 1 and conversation_history:
-                first_msg = conversation_history[0]
-                if first_msg.get("role") == "user" and isinstance(first_msg.get("content"), list):
-                    new_content = []
-                    for item in first_msg["content"]:
-                        if not item.get("initial"):  # Remove images/videos with "initial" flag
+            # Clean old images from history (keep only most recent tool message images)
+            if iteration >= 1:
+                self._clean_old_images(conversation_history)
+                
+                # Update "Available images" to "Images in memory" in first user message
+                if conversation_history:
+                    first_msg = conversation_history[0]
+                    if first_msg.get("role") == "user" and isinstance(first_msg.get("content"), list):
+                        for item in first_msg["content"]:
                             if item.get("type") == "text":
-                                # Update prompt text
                                 text = item.get("text", "")
                                 if "Available images:" in text:
-                                    text = text.replace("Available images:", "Images in memory:")
-                                new_content.append({"type": "text", "text": text})
-                            else:
-                                new_content.append(item)
-                    
-                    if new_content:
-                        first_msg["content"] = new_content
+                                    item["text"] = text.replace("Available images:", "Images in memory:")
             
             if verbose:
                 logger.info(f"\n{'─'*80}")
@@ -421,65 +452,36 @@ class MultimodalAgent(BasicAgent):
                 # Special handling for get_images tool
                 if isinstance(tool_result, dict) and "_get_images_ids" in tool_result:
                     image_ids = tool_result["_get_images_ids"]
-                    observation = tool_result.get("message", "Images loaded")
+                    observation_text = tool_result.get("message", "Images loaded")
                     
-                    # Add tool response message
-                    conversation_history.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": observation
-                    })
-                    
-                    # Remove previous get_images user messages to avoid exceeding image limit
-                    # Keep only: initial user message, assistant messages, and tool messages
-                    filtered_history = []
-                    for i, msg in enumerate(conversation_history):
-                        if msg.get("role") == "user" and i > 0:  # Not the first user message
-                            # Skip user messages that contain images/videos (from previous get_images)
-                            content = msg.get("content", [])
-                            if isinstance(content, list):
-                                has_media = any(item.get("type") in ["image", "video"] for item in content)
-                                if has_media:
-                                    continue  # Skip this message - it's from a previous get_images
-                        filtered_history.append(msg)
-                    conversation_history = filtered_history
-                    
-                    # Build new user message with requested images
-                    new_user_content = []
+                    # Build multimodal tool message content (text + images)
+                    tool_content = [{"type": "text", "text": observation_text}]
                     
                     if memory:
                         for img_id in image_ids:
-                            # Get description from memory
-                            desc = memory.get_description(img_id) or "Generated content"
-                            
-                            # Add text label
-                            new_user_content.append({
-                                "type": "text",
-                                "text": f"{img_id}: {desc}"
-                            })
-                            
-                            # Add actual media
+                            # Get file path from memory
                             file_path = memory.get_file_path(img_id)
+                            
                             if file_path:
-                                media_type = "video" if img_id.startswith("vid_") else "image"
-                                new_user_content.append({
-                                    "type": media_type,
-                                    media_type: file_path
+                                # Add image using internal format (will be converted by wrapper)
+                                tool_content.append({
+                                    "type": "image",
+                                    "image": file_path
                                 })
                     
-                    # Add new user message with images to conversation
-                    if new_user_content:
-                        conversation_history.append({
-                            "role": "user",
-                            "content": new_user_content
-                        })
+                    # Add tool message with multimodal content
+                    conversation_history.append({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": tool_content
+                    })
                     
                     # Log to memory
                     if memory:
                         memory.log_action(
                             tool=tool_name,
                             properties=original_properties or (json.loads(tool_args) if isinstance(tool_args, str) else tool_args),
-                            observation=observation
+                            observation=observation_text
                         )
                     
                     # Record history
@@ -487,7 +489,7 @@ class MultimodalAgent(BasicAgent):
                         "iteration": iteration + 1,
                         "action": tool_name,
                         "action_input": tool_args,
-                        "observation": observation,
+                        "observation": observation_text,
                     })
                     
                     continue  # Skip normal processing for get_images
@@ -538,6 +540,9 @@ class MultimodalAgent(BasicAgent):
                 
                 # Handle output_object (images/videos produced by tools)
                 if output_object and output_type:
+                    # Build multimodal tool message content (text + image/video)
+                    tool_content = []
+                    
                     if memory:
                         # With memory: save to file and generate ID
                         try:
@@ -566,7 +571,7 @@ class MultimodalAgent(BasicAgent):
                                 description=description
                             )
                             
-                            # Format observation for LLM (with ID reference)
+                            # Format observation text for LLM (with ID reference)
                             if output_id:
                                 obs_parts = [f"Saved to memory as {output_id}: {description}"]
                                 
@@ -575,33 +580,39 @@ class MultimodalAgent(BasicAgent):
                                     formatted_data = self._format_observation(observation_data, tool_name)
                                     obs_parts.append(formatted_data)
                                 
-                                observation = ". ".join(obs_parts) if len(obs_parts) > 1 else obs_parts[0]
+                                observation_text = ". ".join(obs_parts) if len(obs_parts) > 1 else obs_parts[0]
                             else:
-                                observation = f"Output Saved"
+                                observation_text = f"Output Saved"
+                            
+                            # Add text to tool content
+                            tool_content.append({"type": "text", "text": observation_text})
+                            
+                            # Add image to tool content using internal format
+                            file_path = memory.get_file_path(output_id)
+                            if file_path and output_type == "img":
+                                tool_content.append({
+                                    "type": "image",
+                                    "image": file_path
+                                })
+                            # Note: videos not yet supported in tool messages, keep text-only for now
+                            
+                            observation = observation_text
                         except Exception as e:
                             if verbose:
                                 logger.warning(f"Failed to log action to memory: {e}")
                             observation = self._format_observation(observation_data, tool_name) if observation_data else "Output generated"
+                            tool_content.append({"type": "text", "text": observation})
                     else:
-                        # Without memory: don't save, only format observation data
+                        # Without memory: format observation data and prepare image
                         observation = self._format_observation(observation_data, tool_name) if observation_data else "Output generated"
-                    
-                    # Add tool message to conversation history
-                    conversation_history.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": observation
-                    })
-                    
-                    # If memory is disabled, add image/video directly to next user message
-                    if not memory:
-                        from PIL import Image
-                        import tempfile
+                        tool_content.append({"type": "text", "text": observation})
                         
-                        user_content_with_media = []
-                        
+                        # Add image to tool message if it's an image
                         if output_type == "img":
-                            # Save image to temp file for API compatibility
+                            from PIL import Image
+                            import tempfile
+                            
+                            # Save image to temp file if it's a PIL Image
                             if isinstance(output_object, Image.Image):
                                 os.makedirs("temp_images", exist_ok=True)
                                 temp_file = tempfile.NamedTemporaryFile(
@@ -614,25 +625,18 @@ class MultimodalAgent(BasicAgent):
                             else:
                                 image_path = output_object  # Already a path
                             
-                            user_content_with_media.append({
+                            # Add using internal format (will be converted by wrapper)
+                            tool_content.append({
                                 "type": "image",
                                 "image": image_path
                             })
-                        elif output_type == "vid":
-                            # Ensure video is a path string
-                            video_path = output_object if isinstance(output_object, str) else str(output_object)
-                            
-                            user_content_with_media.append({
-                                "type": "video",
-                                "video": video_path
-                            })
-                        
-                        # Add user message with media
-                        if user_content_with_media:
-                            conversation_history.append({
-                                "role": "user",
-                                "content": user_content_with_media
-                            })
+                    
+                    # Add tool message with multimodal content to conversation history
+                    conversation_history.append({
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": tool_content if len(tool_content) > 1 else tool_content[0]["text"]
+                    })
                     
                 elif memory:
                     # No output_object, but memory enabled: log text-only action
