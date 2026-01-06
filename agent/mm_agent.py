@@ -313,15 +313,25 @@ class MultimodalAgent(BasicAgent):
         history = []
         
         for iteration in range(self.max_iterations):
-            # After first iteration, remove initial media from the first user message
-            # (model must use get_images to view them again)
-            if iteration >= 1 and conversation_history:
+            # Remove input images from first user message starting from second iteration
+            # Also update text prompt to reflect images are now in memory
+            if iteration == 1 and conversation_history:
                 first_msg = conversation_history[0]
                 if first_msg.get("role") == "user" and isinstance(first_msg.get("content"), list):
-                    first_msg["content"] = [
-                        item for item in first_msg["content"] 
-                        if not item.get("initial")
-                    ]
+                    new_content = []
+                    for item in first_msg["content"]:
+                        if not item.get("initial"):  # Remove images/videos with "initial" flag
+                            if item.get("type") == "text":
+                                # Update prompt text
+                                text = item.get("text", "")
+                                if "Available images:" in text:
+                                    text = text.replace("Available images:", "Images in memory:")
+                                new_content.append({"type": "text", "text": text})
+                            else:
+                                new_content.append(item)
+                    
+                    if new_content:
+                        first_msg["content"] = new_content
             
             if verbose:
                 logger.info(f"\n{'─'*80}")
@@ -558,7 +568,7 @@ class MultimodalAgent(BasicAgent):
                             
                             # Format observation for LLM (with ID reference)
                             if output_id:
-                                obs_parts = [f"Saved as {output_id}: {description}"]
+                                obs_parts = [f"Saved to memory as {output_id}: {description}"]
                                 
                                 # Add non-multimodal data if present (e.g., regions, similarity)
                                 if observation_data:
