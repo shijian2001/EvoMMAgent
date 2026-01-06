@@ -125,8 +125,8 @@ class EvalAnalyzer:
         """
         both_correct = []
         both_wrong = []
-        only_a_correct = []
-        only_b_correct = []
+        only_a_wrong = []
+        only_b_wrong = []
         
         for idx in self.results_dict_a.keys():
             ra = self.results_dict_a[idx]
@@ -163,16 +163,16 @@ class EvalAnalyzer:
                 both_correct.append(sample)
             elif not ra["is_correct"] and not rb["is_correct"]:
                 both_wrong.append(sample)
-            elif ra["is_correct"] and not rb["is_correct"]:
-                only_a_correct.append(sample)
-            else:
-                only_b_correct.append(sample)
+            elif not ra["is_correct"] and rb["is_correct"]:
+                only_a_wrong.append(sample)
+            else:  # ra["is_correct"] and not rb["is_correct"]
+                only_b_wrong.append(sample)
         
         return {
             "both_correct": both_correct,
             "both_wrong": both_wrong,
-            "only_a_correct": only_a_correct,
-            "only_b_correct": only_b_correct
+            "only_a_wrong": only_a_wrong,
+            "only_b_wrong": only_b_wrong
         }
     
     def compute_stats(self, analysis: Dict) -> Dict:
@@ -241,19 +241,19 @@ class EvalAnalyzer:
                     "b_with_tools": sum(1 for s in analysis["both_wrong"] if s["model_b_used_tools"]),
                     "b_without_tools": sum(1 for s in analysis["both_wrong"] if not s["model_b_used_tools"]),
                 },
-                "only_a_correct": {
-                    "total": len(analysis["only_a_correct"]),
-                    "a_with_tools": sum(1 for s in analysis["only_a_correct"] if s["model_a_used_tools"]),
-                    "a_without_tools": sum(1 for s in analysis["only_a_correct"] if not s["model_a_used_tools"]),
-                    "b_with_tools": sum(1 for s in analysis["only_a_correct"] if s["model_b_used_tools"]),
-                    "b_without_tools": sum(1 for s in analysis["only_a_correct"] if not s["model_b_used_tools"]),
+                "only_a_wrong": {
+                    "total": len(analysis["only_a_wrong"]),
+                    "a_with_tools": sum(1 for s in analysis["only_a_wrong"] if s["model_a_used_tools"]),
+                    "a_without_tools": sum(1 for s in analysis["only_a_wrong"] if not s["model_a_used_tools"]),
+                    "b_with_tools": sum(1 for s in analysis["only_a_wrong"] if s["model_b_used_tools"]),
+                    "b_without_tools": sum(1 for s in analysis["only_a_wrong"] if not s["model_b_used_tools"]),
                 },
-                "only_b_correct": {
-                    "total": len(analysis["only_b_correct"]),
-                    "a_with_tools": sum(1 for s in analysis["only_b_correct"] if s["model_a_used_tools"]),
-                    "a_without_tools": sum(1 for s in analysis["only_b_correct"] if not s["model_a_used_tools"]),
-                    "b_with_tools": sum(1 for s in analysis["only_b_correct"] if s["model_b_used_tools"]),
-                    "b_without_tools": sum(1 for s in analysis["only_b_correct"] if not s["model_b_used_tools"]),
+                "only_b_wrong": {
+                    "total": len(analysis["only_b_wrong"]),
+                    "a_with_tools": sum(1 for s in analysis["only_b_wrong"] if s["model_a_used_tools"]),
+                    "a_without_tools": sum(1 for s in analysis["only_b_wrong"] if not s["model_a_used_tools"]),
+                    "b_with_tools": sum(1 for s in analysis["only_b_wrong"] if s["model_b_used_tools"]),
+                    "b_without_tools": sum(1 for s in analysis["only_b_wrong"] if not s["model_b_used_tools"]),
                 },
                 "delta_accuracy": self.stats_b["accuracy"] - self.stats_a["accuracy"]
             }
@@ -299,15 +299,15 @@ class EvalAnalyzer:
         logger.info(f"     A: with tools: {bw['a_with_tools']}, without: {bw['a_without_tools']}")
         logger.info(f"     B: with tools: {bw['b_with_tools']}, without: {bw['b_without_tools']}")
         
-        oac = stats['comparison']['only_a_correct']
-        logger.info(f"  🔵 Only {stats['models']['model_a']} Correct: {oac['total']}")
-        logger.info(f"     A: with tools: {oac['a_with_tools']}, without: {oac['a_without_tools']}")
-        logger.info(f"     B: with tools: {oac['b_with_tools']}, without: {oac['b_without_tools']}")
+        oaw = stats['comparison']['only_a_wrong']
+        logger.info(f"  🔵 Only {stats['models']['model_a']} Wrong: {oaw['total']}")
+        logger.info(f"     A: with tools: {oaw['a_with_tools']}, without: {oaw['a_without_tools']}")
+        logger.info(f"     B: with tools: {oaw['b_with_tools']}, without: {oaw['b_without_tools']}")
         
-        obc = stats['comparison']['only_b_correct']
-        logger.info(f"  🟢 Only {stats['models']['model_b']} Correct: {obc['total']}")
-        logger.info(f"     A: with tools: {obc['a_with_tools']}, without: {obc['a_without_tools']}")
-        logger.info(f"     B: with tools: {obc['b_with_tools']}, without: {obc['b_without_tools']}")
+        obw = stats['comparison']['only_b_wrong']
+        logger.info(f"  🟢 Only {stats['models']['model_b']} Wrong: {obw['total']}")
+        logger.info(f"     A: with tools: {obw['a_with_tools']}, without: {obw['a_without_tools']}")
+        logger.info(f"     B: with tools: {obw['b_with_tools']}, without: {obw['b_without_tools']}")
         
         logger.info(f"{'='*80}\n")
     
