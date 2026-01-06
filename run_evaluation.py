@@ -12,10 +12,12 @@ async def main():
     # ============================================================
     # agent_config = {
     #     "tool_bank": None,  # No tools
-    #     "model_name": "qwen2.5-vl-72b-instruct",
-    #     "max_tokens": 2048,
+    #     "model_name": "qwen-2.5-vl-72b-instruct", # qwen2.5-vl-72b-instruct
+    #     "max_tokens": 10000,
     #     "temperature": 0.0,  # Use 0 for deterministic evaluation
     #     "enable_memory": False,  # No memory
+    #     "base_url": "http://localhost:8000/v1",
+    #     "api_keys": ["dummy-key"],
     # }
     
     # ============================================================
@@ -40,7 +42,7 @@ async def main():
         "max_tokens": 10000,
         "temperature": 0.0,
         "enable_memory": True,
-        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260106",
+        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/test",
         "max_retries": 10,
         "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",
         "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
@@ -50,10 +52,10 @@ async def main():
     
     # Runner configuration
     runner = Runner(
-        jsonl_path="data/eval/image/BLINK/blink_data.jsonl",
+        jsonl_path="data/eval/image/BLINK/blink_data_test.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/20260106/blink/qwen2.5_72b/ours",
+        output_dir="eval_results/test/blink/qwen2.5_72b/ours",
         batch_size=100,
         max_concurrent=10,
         verbose=True
