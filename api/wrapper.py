@@ -192,27 +192,27 @@ class QAWrapper:
         Returns:
             Dict with answer and optional tool_calls
         """
-        # Process each message's multimodal content (all roles, not just user)
+        # Process user messages' multimodal content
         processed_messages = []
         mm_kwargs = None
         
         for msg in messages:
-            # Process any message with list content (could be user, tool, etc.)
-            if isinstance(msg.get("content"), list):
+            # Only process user role with multimodal content
+            if msg.get("role") == "user" and isinstance(msg.get("content"), list):
                 # Convert multimodal content to OpenAI format
                 processed_content, temp_mm_kwargs = build_multimodal_message(
                     msg["content"],
                     model_name=self.model_name
                 )
                 processed_messages.append({
-                    **msg,  # Preserve role, tool_call_id, and other fields
+                    "role": "user",
                     "content": processed_content
                 })
-                # Use mm_kwargs from the last message with multimodal content
+                # Use mm_kwargs from the last user message (if any)
                 if temp_mm_kwargs:
                     mm_kwargs = temp_mm_kwargs
             else:
-                # Keep text-only messages as-is
+                # Keep other messages as-is (assistant, tool, or text-only user)
                 processed_messages.append(msg)
         
         # Build full message list with system prompt
