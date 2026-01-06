@@ -289,13 +289,16 @@ class Memory:
         })
         self.trace_data["answer"] = content
     
-    def end_task(self, success: bool = True):
+    def end_task(self, success: bool = True, is_correct: bool = None):
         """Finalize task and save trace.
         
         Args:
             success: Whether task completed successfully
+            is_correct: Whether the answer is correct (for evaluation)
         """
         self.trace_data["success"] = success
+        if is_correct is not None:
+            self.trace_data["is_correct"] = is_correct
         
         # Save trace.json
         trace_path = os.path.join(self.task_dir, "trace.json")

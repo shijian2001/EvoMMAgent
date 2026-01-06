@@ -180,6 +180,38 @@ class Runner:
         
         return dataset
     
+    def _update_trace_correctness(self, dataset_id: str, is_correct: bool):
+        """Update trace.json with is_correct field.
+        
+        Args:
+            dataset_id: Dataset sample idx
+            is_correct: Whether the answer is correct
+        """
+        memory_dir = self.agent_config.get("memory_dir")
+        if not memory_dir:
+            return
+        
+        memory_path = Path(memory_dir) / "tasks"
+        if not memory_path.exists():
+            return
+        
+        # Find and update trace
+        for task_folder in memory_path.iterdir():
+            if task_folder.is_dir():
+                trace_file = task_folder / "trace.json"
+                if trace_file.exists():
+                    try:
+                        with open(trace_file, 'r', encoding='utf-8') as f:
+                            trace_data = json.load(f)
+                        
+                        if str(trace_data.get("dataset_id")) == str(dataset_id):
+                            trace_data["is_correct"] = is_correct
+                            with open(trace_file, 'w', encoding='utf-8') as f:
+                                json.dump(trace_data, f, indent=2, ensure_ascii=False)
+                            break
+                    except Exception as e:
+                        logger.debug(f"Failed to update trace for {dataset_id}: {e}")
+    
     async def run_single_task(
         self,
         sample: Dict,
@@ -242,7 +274,7 @@ class Runner:
                 option_format='letter'
             )
             
-            return {
+            result_dict = {
                 "idx": sample['idx'],
                 "question": sample['question'],
                 "choices": sample.get('choices', []),
@@ -250,8 +282,17 @@ class Runner:
                 "ground_truth": sample['answer'],
                 "predicted": predicted,
                 "is_correct": is_correct,
-                "response": "" if self.use_tools else response
+                "response": "" if self.use_tools else response,
+                "type": sample.get('type', 'unknown'),
+                "sub_task": sample.get('sub_task', ''),
+                "dataset": sample.get('dataset', ''),
             }
+            
+            # If memory is enabled, update trace with is_correct
+            if self.use_tools and self.agent_config.get("memory_dir"):
+                self._update_trace_correctness(sample['idx'], is_correct)
+            
+            return result_dict
             
         except Exception as e:
             logger.error(f"Task {sample['idx']} failed: {str(e)}")
@@ -264,6 +305,9 @@ class Runner:
                 "predicted": "",
                 "is_correct": False,
                 "response": "",
+                "type": sample.get('type', 'unknown'),
+                "sub_task": sample.get('sub_task', ''),
+                "dataset": sample.get('dataset', ''),
                 "error": str(e)
             }
     
@@ -396,6 +440,7 @@ class Runner:
             "model_name": self.agent_config.get("model_name", "unknown"),
             "memory_dir": self.agent_config.get("memory_dir"),
             "use_tools": self.use_tools,
+            "qa_type": "tool" if self.use_tools else "direct",
         }
         
         return stats

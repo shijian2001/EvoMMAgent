@@ -4,7 +4,7 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Union
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
@@ -30,8 +30,15 @@ class EvalAnalyzer:
         self.stats_b = self._load_json(self.dir_b / "stats.json")
         
         # Extract metadata
-        self.model_a = self.stats_a["metadata"]["model_name"]
-        self.model_b = self.stats_b["metadata"]["model_name"]
+        model_name_a = self.stats_a["metadata"]["model_name"]
+        model_name_b = self.stats_b["metadata"]["model_name"]
+        self.qa_type_a = self.stats_a["metadata"].get("qa_type", "unknown")
+        self.qa_type_b = self.stats_b["metadata"].get("qa_type", "unknown")
+        
+        # Combine model name with qa_type
+        self.model_a = f"{model_name_a} ({self.qa_type_a})"
+        self.model_b = f"{model_name_b} ({self.qa_type_b})"
+        
         self.memory_dir_a = self.stats_a["metadata"].get("memory_dir")
         self.memory_dir_b = self.stats_b["metadata"].get("memory_dir")
         
@@ -65,7 +72,7 @@ class EvalAnalyzer:
         
         logger.info(f"✅ Dataset validated: {len(idx_set_a)} samples\n")
     
-    def _get_trace(self, model: str, dataset_id: str) -> Dict:
+    def _get_trace(self, model: str, dataset_id: str) -> Union[str, List]:
         """Get trace for a sample from memory or results.
         
         Args:
@@ -73,13 +80,15 @@ class EvalAnalyzer:
             dataset_id: Dataset idx
             
         Returns:
-            Trace dict (from memory or results response)
+            - String (response) for direct QA mode
+            - List (trace array) for tool mode
         """
         memory_dir = self.memory_dir_a if model == 'a' else self.memory_dir_b
         results_dict = self.results_dict_a if model == 'a' else self.results_dict_b
+        qa_type = self.qa_type_a if model == 'a' else self.qa_type_b
         
-        # If memory enabled, load trace from memory directory
-        if memory_dir:
+        # Tool mode: load trace from memory directory
+        if qa_type == "tool" and memory_dir:
             memory_path = Path(memory_dir) / "tasks"
             if memory_path.exists():
                 for task_folder in memory_path.iterdir():
@@ -89,10 +98,24 @@ class EvalAnalyzer:
                             with open(trace_file, 'r', encoding='utf-8') as f:
                                 trace_data = json.load(f)
                                 if str(trace_data.get("dataset_id")) == str(dataset_id):
-                                    return trace_data
+                                    return trace_data.get("trace", [])
         
-        # Fallback: use response from results (direct QA mode)
-        return {"response": results_dict[dataset_id].get("response", "")}
+        # Direct mode: use response string from results
+        return results_dict[dataset_id].get("response", "")
+    
+    def _used_tools(self, trace: Union[str, List]) -> bool:
+        """Check if tools were used based on trace.
+        
+        Args:
+            trace: Trace data (string or list)
+            
+        Returns:
+            True if tools were used, False otherwise
+        """
+        if isinstance(trace, list):
+            # Tool mode: check if there are action steps in trace
+            return any(step.get("type") == "action" for step in trace)
+        return False
     
     def analyze(self) -> Dict:
         """Perform analysis and categorize samples.
@@ -113,23 +136,26 @@ class EvalAnalyzer:
             trace_a = self._get_trace('a', idx)
             trace_b = self._get_trace('b', idx)
             
-            # Build sample record
+            # Check tool usage
+            a_used_tools = self._used_tools(trace_a)
+            b_used_tools = self._used_tools(trace_b)
+            
+            # Build sample record (flat structure)
             sample = {
                 "idx": idx,
                 "question": ra["question"],
                 "ground_truth": ra["ground_truth"],
                 "type": ra.get("type", "unknown"),
                 "sub_task": ra.get("sub_task", ""),
-                "model_a": {
-                    "predicted": ra["predicted"],
-                    "is_correct": ra["is_correct"],
-                    "trace": trace_a
-                },
-                "model_b": {
-                    "predicted": rb["predicted"],
-                    "is_correct": rb["is_correct"],
-                    "trace": trace_b
-                }
+                "dataset": ra.get("dataset", ""),
+                "model_a_predicted": ra["predicted"],
+                "model_a_is_correct": ra["is_correct"],
+                "model_a_trace": trace_a,
+                "model_a_used_tools": a_used_tools,
+                "model_b_predicted": rb["predicted"],
+                "model_b_is_correct": rb["is_correct"],
+                "model_b_trace": trace_b,
+                "model_b_used_tools": b_used_tools,
             }
             
             # Categorize
@@ -160,27 +186,75 @@ class EvalAnalyzer:
         """
         total = sum(len(analysis[key]) for key in analysis)
         
+        # Compute tool usage stats for model A
+        a_correct_with_tools = sum(1 for s in self.results_a 
+                                   if s["is_correct"] and self._used_tools(self._get_trace('a', s["idx"])))
+        a_correct_without_tools = self.stats_a["correct"] - a_correct_with_tools
+        a_wrong_with_tools = sum(1 for s in self.results_a 
+                                if not s["is_correct"] and self._used_tools(self._get_trace('a', s["idx"])))
+        a_wrong_without_tools = (self.stats_a["total"] - self.stats_a["correct"]) - a_wrong_with_tools
+        
+        # Compute tool usage stats for model B
+        b_correct_with_tools = sum(1 for s in self.results_b 
+                                   if s["is_correct"] and self._used_tools(self._get_trace('b', s["idx"])))
+        b_correct_without_tools = self.stats_b["correct"] - b_correct_with_tools
+        b_wrong_with_tools = sum(1 for s in self.results_b 
+                                if not s["is_correct"] and self._used_tools(self._get_trace('b', s["idx"])))
+        b_wrong_without_tools = (self.stats_b["total"] - self.stats_b["correct"]) - b_wrong_with_tools
+        
         stats = {
             "models": {
                 "model_a": self.model_a,
-                "model_b": self.model_b
+                "model_b": self.model_b,
             },
             "total": total,
             "model_a": {
                 "correct": self.stats_a["correct"],
                 "wrong": self.stats_a["total"] - self.stats_a["correct"],
-                "accuracy": self.stats_a["accuracy"]
+                "accuracy": self.stats_a["accuracy"],
+                "correct_with_tools": a_correct_with_tools,
+                "correct_without_tools": a_correct_without_tools,
+                "wrong_with_tools": a_wrong_with_tools,
+                "wrong_without_tools": a_wrong_without_tools,
             },
             "model_b": {
                 "correct": self.stats_b["correct"],
                 "wrong": self.stats_b["total"] - self.stats_b["correct"],
-                "accuracy": self.stats_b["accuracy"]
+                "accuracy": self.stats_b["accuracy"],
+                "correct_with_tools": b_correct_with_tools,
+                "correct_without_tools": b_correct_without_tools,
+                "wrong_with_tools": b_wrong_with_tools,
+                "wrong_without_tools": b_wrong_without_tools,
             },
             "comparison": {
-                "both_correct": len(analysis["both_correct"]),
-                "both_wrong": len(analysis["both_wrong"]),
-                "only_a_correct": len(analysis["only_a_correct"]),
-                "only_b_correct": len(analysis["only_b_correct"]),
+                "both_correct": {
+                    "total": len(analysis["both_correct"]),
+                    "a_with_tools": sum(1 for s in analysis["both_correct"] if s["model_a_used_tools"]),
+                    "a_without_tools": sum(1 for s in analysis["both_correct"] if not s["model_a_used_tools"]),
+                    "b_with_tools": sum(1 for s in analysis["both_correct"] if s["model_b_used_tools"]),
+                    "b_without_tools": sum(1 for s in analysis["both_correct"] if not s["model_b_used_tools"]),
+                },
+                "both_wrong": {
+                    "total": len(analysis["both_wrong"]),
+                    "a_with_tools": sum(1 for s in analysis["both_wrong"] if s["model_a_used_tools"]),
+                    "a_without_tools": sum(1 for s in analysis["both_wrong"] if not s["model_a_used_tools"]),
+                    "b_with_tools": sum(1 for s in analysis["both_wrong"] if s["model_b_used_tools"]),
+                    "b_without_tools": sum(1 for s in analysis["both_wrong"] if not s["model_b_used_tools"]),
+                },
+                "only_a_correct": {
+                    "total": len(analysis["only_a_correct"]),
+                    "a_with_tools": sum(1 for s in analysis["only_a_correct"] if s["model_a_used_tools"]),
+                    "a_without_tools": sum(1 for s in analysis["only_a_correct"] if not s["model_a_used_tools"]),
+                    "b_with_tools": sum(1 for s in analysis["only_a_correct"] if s["model_b_used_tools"]),
+                    "b_without_tools": sum(1 for s in analysis["only_a_correct"] if not s["model_b_used_tools"]),
+                },
+                "only_b_correct": {
+                    "total": len(analysis["only_b_correct"]),
+                    "a_with_tools": sum(1 for s in analysis["only_b_correct"] if s["model_a_used_tools"]),
+                    "a_without_tools": sum(1 for s in analysis["only_b_correct"] if not s["model_a_used_tools"]),
+                    "b_with_tools": sum(1 for s in analysis["only_b_correct"] if s["model_b_used_tools"]),
+                    "b_without_tools": sum(1 for s in analysis["only_b_correct"] if not s["model_b_used_tools"]),
+                },
                 "delta_accuracy": self.stats_b["accuracy"] - self.stats_a["accuracy"]
             }
         }
@@ -199,13 +273,13 @@ class EvalAnalyzer:
         
         logger.info(f"🎯 Individual Performance:")
         logger.info(f"  {stats['models']['model_a']}:")
-        logger.info(f"    Correct: {stats['model_a']['correct']}")
-        logger.info(f"    Wrong: {stats['model_a']['wrong']}")
+        logger.info(f"    Correct: {stats['model_a']['correct']} (with tools: {stats['model_a']['correct_with_tools']}, without: {stats['model_a']['correct_without_tools']})")
+        logger.info(f"    Wrong: {stats['model_a']['wrong']} (with tools: {stats['model_a']['wrong_with_tools']}, without: {stats['model_a']['wrong_without_tools']})")
         logger.info(f"    Accuracy: {stats['model_a']['accuracy']*100:.2f}%")
         logger.info(f"")
         logger.info(f"  {stats['models']['model_b']}:")
-        logger.info(f"    Correct: {stats['model_b']['correct']}")
-        logger.info(f"    Wrong: {stats['model_b']['wrong']}")
+        logger.info(f"    Correct: {stats['model_b']['correct']} (with tools: {stats['model_b']['correct_with_tools']}, without: {stats['model_b']['correct_without_tools']})")
+        logger.info(f"    Wrong: {stats['model_b']['wrong']} (with tools: {stats['model_b']['wrong_with_tools']}, without: {stats['model_b']['wrong_without_tools']})")
         logger.info(f"    Accuracy: {stats['model_b']['accuracy']*100:.2f}%")
         logger.info(f"")
         
@@ -214,10 +288,27 @@ class EvalAnalyzer:
         logger.info(f"  Delta: {delta_sign}{delta*100:.2f}%\n")
         
         logger.info(f"📈 Head-to-Head Comparison:")
-        logger.info(f"  ✅ Both Correct: {stats['comparison']['both_correct']}")
-        logger.info(f"  ❌ Both Wrong: {stats['comparison']['both_wrong']}")
-        logger.info(f"  🔵 Only {stats['models']['model_a']} Correct: {stats['comparison']['only_a_correct']}")
-        logger.info(f"  🟢 Only {stats['models']['model_b']} Correct: {stats['comparison']['only_b_correct']}")
+        
+        bc = stats['comparison']['both_correct']
+        logger.info(f"  ✅ Both Correct: {bc['total']}")
+        logger.info(f"     A: with tools: {bc['a_with_tools']}, without: {bc['a_without_tools']}")
+        logger.info(f"     B: with tools: {bc['b_with_tools']}, without: {bc['b_without_tools']}")
+        
+        bw = stats['comparison']['both_wrong']
+        logger.info(f"  ❌ Both Wrong: {bw['total']}")
+        logger.info(f"     A: with tools: {bw['a_with_tools']}, without: {bw['a_without_tools']}")
+        logger.info(f"     B: with tools: {bw['b_with_tools']}, without: {bw['b_without_tools']}")
+        
+        oac = stats['comparison']['only_a_correct']
+        logger.info(f"  🔵 Only {stats['models']['model_a']} Correct: {oac['total']}")
+        logger.info(f"     A: with tools: {oac['a_with_tools']}, without: {oac['a_without_tools']}")
+        logger.info(f"     B: with tools: {oac['b_with_tools']}, without: {oac['b_without_tools']}")
+        
+        obc = stats['comparison']['only_b_correct']
+        logger.info(f"  🟢 Only {stats['models']['model_b']} Correct: {obc['total']}")
+        logger.info(f"     A: with tools: {obc['a_with_tools']}, without: {obc['a_without_tools']}")
+        logger.info(f"     B: with tools: {obc['b_with_tools']}, without: {obc['b_without_tools']}")
+        
         logger.info(f"{'='*80}\n")
     
     def save_analysis(self, analysis: Dict, stats: Dict, output_dir: str):
@@ -278,4 +369,3 @@ Example:
 
 if __name__ == "__main__":
     main()
-
