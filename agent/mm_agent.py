@@ -258,6 +258,13 @@ class MultimodalAgent(BasicAgent):
         Returns:
             Final response string, or dict with response and history if return_history=True
         """
+        # Validate: get_images should not be used when enable_memory=False
+        if not self.enable_memory and "get_images" in self.tool_bank:
+            raise ValueError(
+                "get_images tool should not be used when enable_memory=False. "
+                "When memory retrieval is disabled, all images are kept in context."
+            )
+        
         if verbose:
             logger.info(f"\n{'='*80}")
             logger.info(f"📝 USER QUERY")
@@ -269,40 +276,37 @@ class MultimodalAgent(BasicAgent):
                 logger.info(f"Videos: {len(videos)} video(s)")
             logger.info(f"{'='*80}\n")
         
-        # Initialize memory if enabled
-        memory = None
-        task_id = None
-        if self.enable_memory:
-            from mm_memory import Memory
-            memory = Memory(base_dir=self.memory_dir)
-            
-            # Extract dataset_id and metadata from task_metadata
-            dataset_id = None
-            metadata_kwargs = {}
-            if task_metadata:
-                dataset_id = task_metadata.get("dataset_id")
-                # Pass all other metadata keys
-                for key, value in task_metadata.items():
-                    if key != "dataset_id":
-                        metadata_kwargs[key] = value
-            
-            task_id = memory.start_task(query, dataset_id=dataset_id, **metadata_kwargs)
-            
-            if verbose:
-                logger.info(f"💾 Memory enabled: Task ID = {task_id}\n")
-            
-            # Register inputs
-            if images:
-                for img in images:
-                    img_path = img if isinstance(img, str) else img.get("image")
-                    if img_path and os.path.exists(img_path):
-                        memory.add_input(img_path, "img")
-            
-            if videos:
-                for vid in videos:
-                    vid_path = vid if isinstance(vid, str) else vid.get("video")
-                    if vid_path and os.path.exists(vid_path):
-                        memory.add_input(vid_path, "vid")
+        # Initialize memory (always enabled for ID management and persistence)
+        from mm_memory import Memory
+        memory = Memory(base_dir=self.memory_dir)
+        
+        # Extract dataset_id and metadata from task_metadata
+        dataset_id = None
+        metadata_kwargs = {}
+        if task_metadata:
+            dataset_id = task_metadata.get("dataset_id")
+            # Pass all other metadata keys
+            for key, value in task_metadata.items():
+                if key != "dataset_id":
+                    metadata_kwargs[key] = value
+        
+        task_id = memory.start_task(query, dataset_id=dataset_id, **metadata_kwargs)
+        
+        if verbose:
+            logger.info(f"💾 Memory initialized: Task ID = {task_id}\n")
+        
+        # Register inputs
+        if images:
+            for img in images:
+                img_path = img if isinstance(img, str) else img.get("image")
+                if img_path and os.path.exists(img_path):
+                    memory.add_input(img_path, "img")
+        
+        if videos:
+            for vid in videos:
+                vid_path = vid if isinstance(vid, str) else vid.get("video")
+                if vid_path and os.path.exists(vid_path):
+                    memory.add_input(vid_path, "vid")
         
         # Build system prompt (simplified, without tool descriptions)
         system_prompt = self._build_system_prompt()
@@ -357,7 +361,8 @@ class MultimodalAgent(BasicAgent):
         
         for iteration in range(self.max_iterations):
             # Clean old images from history (keep only most recent tool message images)
-            if iteration >= 1:
+            # Only clean when memory is enabled, as images can be retrieved via get_images
+            if iteration >= 1 and self.enable_memory:
                 self._clean_old_images(conversation_history)
                 
                 # Update "Available images" to "Images in memory" in first user message
@@ -582,7 +587,8 @@ class MultimodalAgent(BasicAgent):
                             
                             # Format observation text for LLM (with ID reference)
                             if output_id:
-                                obs_parts = [f"Saved to memory as {output_id}: {description}"]
+                                prefix = "Saved to memory as" if self.enable_memory else "Generated"
+                                obs_parts = [f"{prefix} {output_id}: {description}"]
                                 
                                 # Add non-multimodal data if present (e.g., regions, similarity)
                                 if observation_data:
