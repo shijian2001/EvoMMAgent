@@ -12,12 +12,16 @@ async def main():
     # ============================================================
     # agent_config = {
     #     "tool_bank": None,  # No tools
-    #     "model_name": "qwen-2.5-vl-72b-instruct", # qwen2.5-vl-72b-instruct
-    #     "max_tokens": 10000,
+    #     "model_name": "qwen3-vl-235b-a22b-instruct", # qwen2.5-vl-72b-instruct, qwen-2.5-vl-72b-instruct, qwen3-vl-235b-a22b-instruct, qwen3-vl-8b-instruct
+    #     "max_tokens": 40000,
     #     "temperature": 0.0,  # Use 0 for deterministic evaluation
     #     "enable_memory": False,  # No memory
-    #     "base_url": "http://localhost:8000/v1",
-    #     "api_keys": ["dummy-key"],
+    #     "max_iterations": 20,
+    #     "max_retries": 20,
+    #     "base_url": "https://maas.devops.xiaohongshu.com/v1",
+    #     "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
+    #     # "base_url": "https://maas.devops.xiaohongshu.com/v1",
+    #     # "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
     # }
     
     # ============================================================
@@ -38,16 +42,19 @@ async def main():
             "get_image2texts_similarity", 
             "get_text2images_similarity"
         ],
-        "model_name": "qwen-2.5-vl-72b-instruct",
-        "max_tokens": 10000,
+        "model_name": "qwen3-vl-235b-a22b-instruct",
+        "max_tokens": 40000,
         "temperature": 0.0,
         "enable_memory": True,
-        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/test",
-        "max_retries": 10,
+        "max_iterations": 20,
+        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260119/dev/qwen3vl_235b/w_memory",
+        "max_retries": 20,
         "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",
         "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
-        "base_url": "http://localhost:8000/v1",
-        "api_keys": ["dummy-key"],
+        "base_url": "https://maas.devops.xiaohongshu.com/v1",
+        "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
+        # "base_url": "http://0.0.0.0:8000/v1",
+        # "api_keys": ["dummy key"],
     }
     
     # Runner configuration
@@ -55,7 +62,7 @@ async def main():
         jsonl_path="data/eval/image/BLINK/blink_data_test.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/test/blink/qwen2.5_72b/ours",
+        output_dir="eval_results/20260119/blink/dev/qwen3vl_235b/w_memory",
         batch_size=100,
         max_concurrent=10,
         verbose=True
