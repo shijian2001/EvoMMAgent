@@ -23,10 +23,10 @@ Best practices when using tools:
 - Analyze outputs: Think critically about tool results, combine them with direct observation to make judgments, don't replace what you actually see with inferential assumptions
 
 If a tool call fails or returns an error, adapt by trying alternative tools or adjusting your approach.
-{% if enable_memory %}
 
-## Memory System
-All images are automatically saved with unique IDs (img_0, img_1, ...).
+## Image Reference
+All images are referenced with unique IDs (img_0, img_1, ...). When calling tools, use these IDs to specify which image to operate on.
+{% if enable_memory %}
 
 Images not shown are saved in the memory system. You can use get_images with image IDs to view them. Supports viewing one or multiple images.
 {% endif %}
