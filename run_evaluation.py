@@ -47,7 +47,7 @@ async def main():
         "temperature": 0.0,
         "enable_memory": True,
         "max_iterations": 20,
-        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260119/dev/qwen3vl_235b/w_memory",
+        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260120/qwen3vl_235b/w_memory",
         "max_retries": 20,
         "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",
         "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
@@ -59,10 +59,10 @@ async def main():
     
     # Runner configuration
     runner = Runner(
-        jsonl_path="data/eval/image/BLINK/blink_data_test.jsonl",
+        jsonl_path="data/eval/image/BLINK/blink_data.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/20260119/blink/dev/qwen3vl_235b/w_memory",
+        output_dir="eval_results/20260120/blink/qwen3vl_235b/w_memory",
         batch_size=100,
         max_concurrent=10,
         verbose=True
