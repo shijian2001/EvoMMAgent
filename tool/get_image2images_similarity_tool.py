@@ -15,8 +15,8 @@ class GetImageToImagesSimilarityTool(ModelBasedTool):
     name = "get_image2images_similarity"
     model_id = "clip"
     
-    description_en = "Compute similarity between one image and multiple images."
-    description_zh = "计算一张图像与多张图像的相似度。"
+    description_en = "Compute similarity between one image and multiple images (image → images)."
+    description_zh = "计算一张图像与多张图像的相似度（图像 → 图像）。"
     
     parameters = {
         "type": "object",

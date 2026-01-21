@@ -15,8 +15,8 @@ class GetTextToImagesSimilarityTool(ModelBasedTool):
     name = "get_text2images_similarity"
     model_id = "clip"
     
-    description_en = "Compute similarity between one text and multiple images."
-    description_zh = "计算一段文本与多张图像的相似度。"
+    description_en = "Compute similarity between one text and multiple images (text → images)."
+    description_zh = "计算一段文本与多张图像的相似度（文本 → 图像）。"
     
     parameters = {
         "type": "object",
