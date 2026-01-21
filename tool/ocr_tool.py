@@ -18,8 +18,8 @@ class OCRTool(ModelBasedTool):
     name = "ocr"
     model_id = "ocr"
     
-    description_en = "Extract texts from an image or return an empty string if no text is in the image."
-    description_zh = "从图像中提取文本，如果图像中没有文本则返回空字符串。"
+    description_en = "Extract text from an image. Returns empty if no text found."
+    description_zh = "提取图像中的文本，无文本则返回空。"
     
     parameters = {
         "type": "object",

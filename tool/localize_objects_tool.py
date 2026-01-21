@@ -14,8 +14,8 @@ class LocalizeObjectsTool(ModelBasedTool):
     name = "localize_objects"
     model_id = "sam3"
     
-    description_en = "Localize objects with normalized bounding boxes [x1, y1, x2, y2] where values are between 0 and 1 using SAM3."
-    description_zh = "使用SAM3定位对象并返回归一化边界框 [x1, y1, x2, y2]，坐标值在 0 到 1 之间"
+    description_en = "Localize objects and return their bounding boxes. Use this to get bbox for other region-based tools."
+    description_zh = "定位对象并返回边界框。可为其他需要坐标的工具提供输入。"
     parameters = {
         "type": "object",
         "properties": {

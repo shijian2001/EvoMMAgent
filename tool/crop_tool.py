@@ -12,8 +12,8 @@ class CropTool(BasicTool):
     """Crop an image with a bounding box."""
     
     name = "crop"
-    description_en = "Crop an image region specified by a bounding box."
-    description_zh = "使用边界框裁剪图像区域。"
+    description_en = "Crop a region from an image. Use localize_objects first if bbox is unknown."
+    description_zh = "裁剪图像区域。若坐标未知，先用 localize_objects 定位。"
     
     parameters = {
         "type": "object",

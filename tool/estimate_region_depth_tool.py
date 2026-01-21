@@ -16,8 +16,8 @@ class EstimateRegionDepthTool(ModelBasedTool):
     name = "estimate_region_depth"
     model_id = "depth_anything"
     
-    description_en = "Estimate the depth of a specific region in an image using DepthAnything model. The smaller the value is, the closer the region is to the camera."
-    description_zh = "估计图像中特定区域的深度。值越小，表示该区域离相机越近。"
+    description_en = "Estimate depth of a region. Smaller value = closer. Use localize_objects first if bbox is unknown."
+    description_zh = "估计区域深度，值越小越近。若坐标未知，先用 localize_objects 定位。"
     
     parameters = {
         "type": "object",

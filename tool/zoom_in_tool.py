@@ -13,8 +13,8 @@ class ZoomInTool(BasicTool):
     """Zoom in on a region of an image."""
     
     name = "zoom_in"
-    description_en = "Zoom in on a region of the image by cropping and resizing."
-    description_zh = "裁剪并放大图像的指定区域。"
+    description_en = "Zoom in on a region by cropping and upscaling. Use localize_objects first if bbox is unknown."
+    description_zh = "裁剪并放大指定区域。若坐标未知，先用 localize_objects 定位。"
     
     parameters = {
         "type": "object",

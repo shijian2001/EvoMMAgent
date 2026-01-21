@@ -14,8 +14,8 @@ class GetObjectsTool(ModelBasedTool):
     name = "get_objects"
     model_id = "ram"
     
-    description_en = "Detect and extract objects from an image."
-    description_zh = "从图像中检测和提取对象。"
+    description_en = "List all detected objects/tags in an image."
+    description_zh = "列出图像中检测到的所有对象/标签。"
     
     parameters = {
         "type": "object",

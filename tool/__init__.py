@@ -19,6 +19,7 @@ from tool.get_image2texts_similarity_tool import GetImageToTextsSimilarityTool
 from tool.get_text2images_similarity_tool import GetTextToImagesSimilarityTool
 from tool.ocr_tool import OCRTool
 from tool.get_images_tool import GetImagesTool
+from tool.measure_region_property_tool import MeasureRegionPropertyTool
 
 __all__ = [
     "BasicTool",

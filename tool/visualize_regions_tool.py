@@ -16,8 +16,8 @@ class VisualizeRegionsOnImageTool(BasicTool):
     """A tool to label regions on an image with bounding boxes."""
     
     name = "visualize_regions"
-    description_en = "Label regions on an image with bounding boxes and optional text labels. Each region is defined by normalized coordinates [x1, y1, x2, y2] where values are between 0 and 1."
-    description_zh = "在图像上标注区域并绘制边界框和可选的文本标签。每个区域由归一化坐标 [x1, y1, x2, y2] 定义，其中值在 0 到 1 之间。"
+    description_en = "Draw bounding boxes and labels on an image. Each region is defined by normalized coordinates [x1, y1, x2, y2] where values are between 0 and 1. Use localize_objects first if bbox is unknown."
+    description_zh = "在图像上绘制边界框和标签。每个区域由归一化坐标 [x1, y1, x2, y2] 定义，值在 0 到 1 之间。若坐标未知，先用 localize_objects 定位。"
     parameters = {
         "type": "object",
         "properties": {
