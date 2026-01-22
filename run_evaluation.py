@@ -12,7 +12,7 @@ async def main():
     # ============================================================
     # agent_config = {
     #     "tool_bank": None,  # No tools
-    #     "model_name": "qwen3-vl-235b-a22b-instruct", # qwen2.5-vl-72b-instruct, qwen-2.5-vl-72b-instruct, qwen3-vl-235b-a22b-instruct, qwen3-vl-8b-instruct
+    #     "model_name": "qwen3-vl-8b-instruct", # qwen2.5-vl-72b-instruct, qwen-2.5-vl-72b-instruct, qwen3-vl-235b-a22b-instruct, qwen3-vl-8b-instruct, qwen3-vl-32b-instruct
     #     "max_tokens": 40000,
     #     "temperature": 0.0,  # Use 0 for deterministic evaluation
     #     "enable_memory": False,  # No memory
@@ -30,24 +30,25 @@ async def main():
     agent_config = {
         "tool_bank": [
             # "ocr",
-            "get_images",
+            # "get_images",
+            "localize_objects", 
             "zoom_in", 
             "calculator", 
-            "crop", 
+            "crop",
+            # "measure_region_property",
             "visualize_regions",
-            "localize_objects", 
             "estimate_region_depth", 
             "estimate_object_depth", 
             "get_image2images_similarity", 
             "get_image2texts_similarity", 
             "get_text2images_similarity"
         ],
-        "model_name": "qwen3-vl-235b-a22b-instruct",
+        "model_name": "qwen3-vl-8b-instruct",
         "max_tokens": 40000,
         "temperature": 0.0,
-        "enable_memory": True,
+        "enable_memory": False,
         "max_iterations": 20,
-        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260120/qwen3vl_235b/w_memory",
+        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260123/qwen3vl_size/blink/qwen3vl_8b/w_tool",
         "max_retries": 20,
         "mm_agent_template_en_file": "Eval_MMAgent_EN.jinja2",
         "mm_agent_template_zh_file": "Eval_MMAgent_ZH.jinja2",
@@ -62,7 +63,7 @@ async def main():
         jsonl_path="data/eval/image/BLINK/blink_data.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/20260120/blink/qwen3vl_235b/w_memory",
+        output_dir="eval_results/20260123/qwen3vl_size/blink/qwen3vl_8b/w_tool",
         batch_size=100,
         max_concurrent=10,
         verbose=True
