@@ -14,8 +14,8 @@ class LocalizeObjectsTool(ModelBasedTool):
     name = "localize_objects"
     model_id = "sam3"
     
-    description_en = "Localize objects and return their bounding boxes. Use this to get bbox for other region-based tools."
-    description_zh = "定位对象并返回边界框。可为其他需要坐标的工具提供输入。"
+    description_en = "Localize objects and return their bounding boxes. Use this to get bbox for other region-based tools. Note: Cannot detect text labels or annotation markers (e.g., 'A', 'B', 'point 1') drawn on images."
+    description_zh = "定位对象并返回边界框。可为其他需要坐标的工具提供输入。注意：无法检测图像上绘制的文字标签或标注符号（如 'A'、'B'、'点1'）。"
     parameters = {
         "type": "object",
         "properties": {
