@@ -130,7 +130,11 @@ def build_image_message(
                 }]
             }]
             
-            images, _ = process_vision_info(image_msg, image_patch_size=image_patch_size)
+            images, _ = process_vision_info(
+                image_msg, 
+                image_patch_size=image_patch_size,
+                max_pixels=28 * 28 * 128,
+            )
             
             if images:
                 for img in images:
