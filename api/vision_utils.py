@@ -123,6 +123,10 @@ def build_image_message(
         if item["type"] == "image":
             image_params = {k: v for k, v in item.items() if k != "type"}
             
+            # Add default max_pixels if not specified
+            if 'max_pixels' not in image_params:
+                image_params['max_pixels'] = 28 * 28 * 128
+            
             image_msg = [{
                 "content": [{
                     "type": "image",
@@ -130,11 +134,7 @@ def build_image_message(
                 }]
             }]
             
-            images, _ = process_vision_info(
-                image_msg, 
-                image_patch_size=image_patch_size,
-                max_pixels=28 * 28 * 128,
-            )
+            images, _ = process_vision_info(image_msg, image_patch_size=image_patch_size)
             
             if images:
                 for img in images:
