@@ -12,6 +12,8 @@ API_KEY = "MAAS369f45faf38a4db59ae7dc6ed954a399"
 # MAAS369f45faf38a4db59ae7dc6ed954a399
 # QSTcac25b156c126d777c3c239a51cf941c
 MODEL_NAME = "qwen3-vl-8b-instruct"
+# qwen3-vl-32b-instruct
+# qwen3-vl-235b-a22b-instruct
  
 CALCULATOR_TOOL = {
     "type": "function",
