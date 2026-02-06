@@ -136,7 +136,69 @@ class MultimodalAgent(BasicAgent):
             max_retries=max_retries,
             parse_json=False,  # Agent needs raw string to detect tool calls
         )
+        
+        # Retrieval pipeline (pluggable, only initialized when enabled)
+        self.retrieval_pipeline = None
+        if config.retrieval.enable:
+            self._init_retrieval_pipeline(config.retrieval)
     
+    
+    def _init_retrieval_pipeline(self, retrieval_config) -> None:
+        """Initialize the retrieval pipeline from config.
+        
+        Only called when ``retrieval_config.enable`` is True.
+        Imports are deferred so that retrieval dependencies are not
+        required when the feature is disabled.
+        
+        Args:
+            retrieval_config: ``RetrievalConfig`` instance
+        """
+        from mm_memory.memory_bank import MemoryBank
+        from mm_memory.retrieval.embedder import Embedder
+        from mm_memory.retrieval.reranker import Reranker
+        from mm_memory.retrieval.query_rewriter import QueryRewriter
+        from mm_memory.retrieval.pipeline import RetrievalPipeline
+        
+        memory_bank = MemoryBank(retrieval_config.bank_memory_dir)
+        
+        embedder = Embedder(
+            model_name=retrieval_config.embedding_model,
+            base_url=retrieval_config.embedding_base_url,
+            api_key=retrieval_config.embedding_api_key or "dummy",
+        )
+        
+        reranker = None
+        if retrieval_config.enable_rerank and retrieval_config.rerank_model:
+            reranker = Reranker(
+                model_name=retrieval_config.rerank_model,
+                base_url=retrieval_config.rerank_base_url,
+                api_key=retrieval_config.rerank_api_key or "dummy",
+            )
+        
+        query_rewriter = None
+        if retrieval_config.enable_query_rewrite:
+            query_rewriter = QueryRewriter(
+                api_pool=self.api_pool,
+                max_sub_queries=retrieval_config.max_sub_queries,
+            )
+        
+        self.retrieval_pipeline = RetrievalPipeline(
+            config=retrieval_config,
+            memory_bank=memory_bank,
+            embedder=embedder,
+            reranker=reranker,
+            api_pool=self.api_pool,
+            query_rewriter=query_rewriter,
+        )
+        
+        logger.info(
+            f"Retrieval pipeline initialized: "
+            f"bank={retrieval_config.bank_memory_dir}, "
+            f"embedding={retrieval_config.embedding_model}, "
+            f"rerank={'enabled' if reranker else 'disabled'}, "
+            f"query_rewrite={'enabled' if query_rewriter else 'disabled'}, "
+            f"max_rounds={retrieval_config.max_retrieval_rounds}"
+        )
     
     def _clean_old_images(self, conversation_history: List[Dict[str, Any]]) -> None:
         """Clean old images from conversation history, keeping only the most recent user message images.
@@ -181,11 +243,14 @@ class MultimodalAgent(BasicAgent):
         for i in sorted(messages_to_remove, reverse=True):
             conversation_history.pop(i)
     
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, experience: str = "") -> str:
         """Build simplified system prompt using Jinja2 template.
         
         Tool definitions are passed separately via tools parameter to API,
         not included in the system prompt.
+        
+        Args:
+            experience: Optional experience from retrieval pipeline
         
         Returns:
             System prompt string
@@ -202,7 +267,10 @@ class MultimodalAgent(BasicAgent):
         
         # Use template for tool-enabled agent
         template = self.jinja_env.get_template(self.mm_agent_template_file)
-        system_prompt = template.render(enable_memory=self.enable_memory)
+        system_prompt = template.render(
+            enable_memory=self.enable_memory,
+            experience=experience,
+        )
         
         return system_prompt
     
@@ -308,8 +376,24 @@ class MultimodalAgent(BasicAgent):
                 if vid_path and os.path.exists(vid_path):
                     memory.add_input(vid_path, "vid")
         
+        # Retrieval pre-processing (pluggable, skipped when pipeline is None)
+        experience = ""
+        if self.retrieval_pipeline:
+            try:
+                image_paths = None
+                if images:
+                    image_paths = [
+                        img if isinstance(img, str) else img.get("image")
+                        for img in images
+                    ]
+                experience = await self.retrieval_pipeline.run(query, image_paths)
+                if verbose and experience:
+                    logger.info(f"Retrieved experience ({len(experience)} chars)")
+            except Exception as e:
+                logger.warning(f"Retrieval pipeline failed: {e}, proceeding without experience")
+        
         # Build system prompt (simplified, without tool descriptions)
-        system_prompt = self._build_system_prompt()
+        system_prompt = self._build_system_prompt(experience=experience)
         
         # Build tools schema for API
         tools_schema = self._build_tools_schema() if self.tool_bank else None

@@ -95,3 +95,18 @@ source scripts/activate_env.sh /path/to/another/env
 # Run multimodal agent tests
 python run_mm_agent.py
 ```
+
+## Retrieval Pipeline (Optional)
+
+Build a memory bank from training traces, then use it to augment inference with experience from similar solved tasks.
+
+```bash
+# 1. Build memory bank (offline, one-time)
+python scripts/build_memory_bank.py \
+    --memory_dir /path/to/train_memory/ \
+    --embedding_model jina-embeddings-v3 \
+    --embedding_base_url http://vllm-emb:8001/v1
+
+# 2. Run evaluation with retrieval — add retrieval_config to agent_config
+#    Omit retrieval_config or set enable=False to run without it
+```
