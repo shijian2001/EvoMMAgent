@@ -64,6 +64,32 @@ FAKE_TRACES = [
         "answer": "Yes",
         "is_correct": False,  # filtered when filter_correct=True
     },
+    # Trace with repeated tools and long multi-line answer (for index text tests)
+    {
+        "task_id": "000005",
+        "input": {
+            "question": "During the IQ test, identify the pattern.",
+            "images": [{"id": "img_0", "path": "data/eval/image/test.png"}],
+        },
+        "sub_task": "IQ Test",
+        "trace": [
+            {"type": "think", "content": "Let me examine each shape."},
+            {"type": "action", "tool": "localize_objects", "args": {"query": "shapes"}},
+            {"type": "observation", "content": "Found 8 shapes."},
+            {"type": "action", "tool": "zoom_in", "args": {"bbox": [0, 0, 0.1, 0.5]}},
+            {"type": "observation", "content": "Star shape."},
+            {"type": "action", "tool": "zoom_in", "args": {"bbox": [0.1, 0, 0.2, 0.5]}},
+            {"type": "observation", "content": "Bowtie shape."},
+            {"type": "action", "tool": "zoom_in", "args": {"bbox": [0.2, 0, 0.3, 0.5]}},
+            {"type": "observation", "content": "Complex shape."},
+        ],
+        "answer": (
+            "The pattern shows decreasing geometric regularity.\n"
+            "Option A continues the organic progression.\n"
+            "Answer: A"
+        ),
+        "is_correct": True,
+    },
 ]
 
 CORRECT_TRACES = [t for t in FAKE_TRACES if t.get("is_correct", False)]
@@ -83,15 +109,18 @@ def create_fake_memory_dir() -> str:
 
 
 def create_synthetic_bank(memory_dir: str, dim: int = 8):
-    """Write random embeddings + task_ids to {memory_dir}/bank/."""
+    """Write random embeddings + task_ids + captions to {memory_dir}/bank/."""
     task_ids = [t["task_id"] for t in CORRECT_TRACES]
     embeddings = np.random.randn(len(task_ids), dim).astype(np.float32)
+    captions = [""] * len(task_ids)
 
     bank_dir = os.path.join(memory_dir, "bank")
     os.makedirs(bank_dir, exist_ok=True)
     np.save(os.path.join(bank_dir, "embeddings.npy"), embeddings)
     with open(os.path.join(bank_dir, "task_ids.json"), "w") as f:
         json.dump(task_ids, f)
+    with open(os.path.join(bank_dir, "captions.json"), "w") as f:
+        json.dump(captions, f)
 
 
 def cleanup(path: str):

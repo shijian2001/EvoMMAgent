@@ -49,8 +49,7 @@ class RetrievalConfig:
     
     # Query Rewriter
     enable_query_rewrite: bool = True
-    query_rewrite_strategy: str = "text_only"   # "text_only" | "auto" (future)
-    max_sub_queries: int = 3
+    max_sub_queries: int = 5
     
     # Embedding Retrieval (vLLM deployed)
     embedding_model: str = ""
@@ -64,6 +63,9 @@ class RetrievalConfig:
     rerank_base_url: str = ""
     rerank_api_key: str = ""
     rerank_top_n: int = 3
+    
+    # Search quality filter
+    min_score: float = 0.1                      # cosine similarity threshold
     
     # Multi-round Deep Research
     max_retrieval_rounds: int = 1               # 1=single, 2+=multi-round

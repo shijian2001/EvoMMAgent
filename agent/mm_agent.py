@@ -200,6 +200,11 @@ class MultimodalAgent(BasicAgent):
             f"max_rounds={retrieval_config.max_retrieval_rounds}"
         )
     
+    async def close(self) -> None:
+        """Release resources held by sub-components. Call after all tasks are done."""
+        if self.retrieval_pipeline:
+            await self.retrieval_pipeline.close()
+    
     def _clean_old_images(self, conversation_history: List[Dict[str, Any]]) -> None:
         """Clean old images from conversation history, keeping only the most recent user message images.
         

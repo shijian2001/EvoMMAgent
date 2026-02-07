@@ -2,7 +2,7 @@
 """Test 3: QueryRewriter + Full RetrievalPipeline.
 
 Covers:
-  - QueryRewriter.rewrite（text_only 策略，带/不带上轮 context）
+  - QueryRewriter.rewrite（多模态，带/不带上轮 context，image_caption + variable queries）
   - RetrievalPipeline.run 四种组合：
     a) 单轮 + 全功能（rewrite + rerank）
     b) 多轮 (2 rounds) + sufficiency 判断
@@ -39,30 +39,32 @@ from mm_memory.retrieval.pipeline import RetrievalPipeline
 # ── QueryRewriter ────────────────────────────────────────────────────────────
 
 async def test_query_rewriter(api_pool: APIPool):
-    """验证 LLM 能生成改写 query，并保持原始 question 为第一条。"""
+    """验证 LLM 能生成 image_caption + variable queries，原始 question 为第一条。"""
     section("1. QueryRewriter")
 
     rewriter = QueryRewriter(api_pool=api_pool, max_sub_queries=3)
 
-    # 基础改写：预期返回 ≥2 条 query（原始 + 至少 1 条改写）
+    # 1a. 无图改写：预期 text_queries = [原始, *额外queries]
+    # image_caption 应为空（无图）
     result = await rewriter.rewrite(
         question="What color is the largest car in the image?",
-        strategy="text_only",
     )
-    assert result["text_queries"][0] == "What color is the largest car in the image?", \
+    queries = result["text_queries"]
+    assert queries[0] == "What color is the largest car in the image?", \
         "第一条应是原始 question"
-    assert len(result["text_queries"]) > 1, "应至少生成 1 条改写 query"
-    ok(f"Basic rewrite → {len(result['text_queries'])} queries:")
-    for i, q in enumerate(result["text_queries"]):
+    assert len(queries) >= 1, "至少应有原始 question"
+    assert "image_caption" in result, "结果应包含 image_caption 字段"
+    ok(f"No-image rewrite → {len(queries)} queries, caption='{result['image_caption']}'")
+    for i, q in enumerate(queries):
         print(f"      [{i}] {q}")
 
-    # 带上轮 context 的改写：模拟多轮场景，LLM 应基于 context 调整方向
+    # 1b. 带上轮 context 的改写：LLM 应基于 context 调整方向
     result2 = await rewriter.rewrite(
         question="What color is the largest car in the image?",
-        strategy="text_only",
         previous_context="Found depth estimation tasks. Still need color-related tasks.",
     )
-    assert len(result2["text_queries"]) > 1
+    assert len(result2["text_queries"]) >= 1
+    assert "image_caption" in result2, "context rewrite 也应包含 image_caption"
     ok(f"Rewrite with context → {len(result2['text_queries'])} queries")
 
     return rewriter
@@ -78,7 +80,7 @@ async def test_pipeline(
     """验证 RetrievalPipeline.run 在不同配置下都能正常返回 experience。"""
     section("2. Full Pipeline")
 
-    # 先用真实 embedding 构建 bank
+    # 先用真实 embedding 构建 bank（无 caption — 测试环境无真实图像文件）
     bank_dir = os.path.join(memory_dir, "bank")
     if os.path.exists(bank_dir):
         shutil.rmtree(bank_dir)

@@ -1,8 +1,8 @@
 """Query rewriter using the agent's shared LLM via APIPool + JSONParser.
 
-Generates alternative text queries to improve retrieval recall.
-Currently implements ``text_only`` strategy; ``auto`` strategy
-(with image-based queries) is reserved for future extension.
+Generates an image caption (when images are provided) and variable-count
+alternative text queries to improve retrieval recall.  The LLM sees both
+the question and all input images in a single multimodal call.
 """
 
 import logging
@@ -12,32 +12,33 @@ from api.json_parser import JSONParser
 
 logger = logging.getLogger(__name__)
 
-REWRITE_PROMPT = """You are a query rewriter for a multimodal retrieval system.
+REWRITE_PROMPT = """\
+You are a query rewriter for a multimodal retrieval system.
+Your goal: generate search queries to retrieve similar solved examples from a memory bank.
 
-Given a user question, generate {max_queries} alternative search queries that \
-capture different aspects of the question. These queries will be used to retrieve \
-similar solved examples from a memory bank.
+Given the user's question{and_images}, output JSON with:
+1. "image_caption": A concise 1-2 sentence description of what the images show as a whole. \
+If no images are provided, set to "".
+2. "queries": A list of 0 to {max_queries} alternative search queries that capture different \
+retrieval angles (task type, visual analysis needed, tools/methods that might help). \
+Generate only as many as useful — do not pad with redundant queries.
 
-Rules:
-- Query 1: Rephrase the question more generally (focus on the task type)
-- Query 2: Focus on the specific visual analysis needed
-- Query 3: Focus on what tools/methods might help solve this
-- Keep each query concise (under 30 words)
+Keep each query and the caption under 30 words. Be specific, not generic.
 
 User question: {question}
 {context_block}
-Output as JSON: {{"queries": ["query1", "query2", ...]}}"""
+Output as JSON: {{"image_caption": "...", "queries": [...]}}"""
 
 
 class QueryRewriter:
-    """Query rewriting via shared APIPool + JSONParser."""
+    """Multimodal query rewriting via shared APIPool + JSONParser."""
 
-    def __init__(self, api_pool, max_sub_queries: int = 3):
+    def __init__(self, api_pool, max_sub_queries: int = 5):
         """Initialize query rewriter.
 
         Args:
             api_pool: Shared APIPool instance from the agent
-            max_sub_queries: Maximum number of rewritten queries to generate
+            max_sub_queries: Maximum number of additional rewritten queries
         """
         self.api_pool = api_pool
         self.max_sub_queries = max_sub_queries
@@ -46,39 +47,48 @@ class QueryRewriter:
         self,
         question: str,
         images: Optional[List[str]] = None,
-        strategy: str = "text_only",
         previous_context: str = "",
     ) -> Dict[str, Any]:
         """Rewrite query for retrieval.
 
+        Sends the question (and images, if any) to the LLM in a single
+        multimodal call.  Returns the original question, an optional
+        image caption, and 0-N additional search queries.
+
         Args:
             question: Original question text
-            images: Image paths (reserved for future ``auto`` strategy)
-            strategy: ``"text_only"`` or ``"auto"`` (future)
-            previous_context: Context from previous retrieval round (for multi-round)
+            images: Optional list of input image paths
+            previous_context: Context from previous retrieval round (multi-round)
 
         Returns:
             Dict with keys:
-                - ``text_queries``: ``[original_question, rewritten_1, ...]``
-                - ``image_queries``: ``[]`` (reserved)
-                - ``multimodal_queries``: ``[]`` (reserved)
+                - ``text_queries``: ``[question, caption?, q1, q2, ...]``
+                - ``image_caption``: caption string (empty if no images)
         """
-        if strategy == "text_only":
-            queries = await self._text_only_rewrite(question, previous_context)
-        else:
-            # Future: "auto" strategy with image analysis
-            queries = await self._text_only_rewrite(question, previous_context)
+        caption, extra_queries = await self._rewrite_impl(
+            question, images, previous_context
+        )
 
-        return {
-            "text_queries": [question] + queries,  # Always include original
-            "image_queries": [],
-            "multimodal_queries": [],
-        }
+        text_queries = [question]
+        if caption:
+            text_queries.append(caption)
+        text_queries.extend(extra_queries[: self.max_sub_queries])
 
-    async def _text_only_rewrite(
-        self, question: str, previous_context: str = ""
-    ) -> List[str]:
-        """Generate text-only rewritten queries via LLM."""
+        return {"text_queries": text_queries, "image_caption": caption}
+
+    # ------------------------------------------------------------------
+
+    async def _rewrite_impl(
+        self,
+        question: str,
+        images: Optional[List[str]] = None,
+        previous_context: str = "",
+    ) -> tuple:
+        """Core implementation: call LLM and parse output.
+
+        Returns:
+            (image_caption: str, queries: List[str])
+        """
         context_block = ""
         if previous_context:
             context_block = (
@@ -86,17 +96,29 @@ class QueryRewriter:
                 f"{previous_context}\n"
             )
 
+        and_images = " and images" if images else ""
         prompt = REWRITE_PROMPT.format(
             question=question,
             max_queries=self.max_sub_queries,
             context_block=context_block,
+            and_images=and_images,
         )
+
+        # Build multimodal message when images are provided
+        if images:
+            content: Any = [{"type": "text", "text": prompt}]
+            for img_path in images:
+                content.append(
+                    {"type": "image_url", "image_url": {"url": img_path}}
+                )
+        else:
+            content = prompt
 
         try:
             result = await self.api_pool.execute(
                 "qa",
                 system="You are a helpful query rewriter. Always respond in valid JSON.",
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": content}],
                 temperature=0.3,
                 max_tokens=500,
             )
@@ -104,11 +126,13 @@ class QueryRewriter:
             answer = result.get("answer", "")
             parsed = JSONParser.parse(answer)
 
-            if isinstance(parsed, dict) and "queries" in parsed:
-                return parsed["queries"][: self.max_sub_queries]
+            if isinstance(parsed, dict):
+                caption = parsed.get("image_caption", "") or ""
+                queries = parsed.get("queries", []) or []
+                return caption, queries
 
-            return []
+            return "", []
 
         except Exception as e:
             logger.warning(f"Query rewrite failed: {e}, using original query only")
-            return []
+            return "", []

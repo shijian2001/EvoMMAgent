@@ -1,7 +1,7 @@
 """Retrieval pipeline orchestrator.
 
-Coordinates query rewriting, embedding search, reranking, sufficiency
-checking, and LLM summary to produce experience for the agent.
+Coordinates query rewriting, embedding search, reranking, LLM summary,
+and sufficiency checking to produce experience for the agent.
 """
 
 import logging
@@ -17,29 +17,34 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 SUMMARY_PROMPT = """\
-Based on the following retrieved examples that are similar to the current task, \
-summarize the experience.
+You are summarizing experience from similar successfully solved tasks. \
+This experience will guide the solving of similar tasks in the future.
 
 ## Current Task
 Question: {question}
-
-## Retrieved Similar Examples
+{image_line}
+## Similar Solved Examples
 {examples}
 
-Summarize the experience in 2-3 sentences:
-1. What tools/approach are most likely effective?
-2. Any key patterns or pitfalls from similar tasks?
+Write concise sentences of actionable experience. Focus on:
+- What general approach or tool usage strategy worked well
+- What conditions or situations require special attention
+- What common mistakes to avoid
 
-Keep it concise and actionable."""
+Write in a direct, advisory tone as if briefing a colleague. Do not reference \
+specific example numbers or task labels. Do not repeat the question."""
 
 SUFFICIENCY_PROMPT = """\
-Given the current task and retrieved examples, do you have enough information \
-to provide useful experience?
+Judge whether the following experience is sufficient to guide solving the \
+given task. Consider both the question and the visual content of the task.
 
-Question: {question}
-Retrieved examples summary: {summary}
+Task: {question}
+{image_line}
+Experience:
+{summary}
 
-Respond in JSON: {{"sufficient": true/false, "reason": "brief explanation if not sufficient"}}"""
+Respond in JSON: {{"sufficient": true/false, "missing": "if not sufficient, \
+one phrase describing the unaddressed aspect; empty string if sufficient"}}"""
 
 
 class RetrievalPipeline:
@@ -71,94 +76,145 @@ class RetrievalPipeline:
         self.api_pool = api_pool
         self.query_rewriter = query_rewriter
 
+    async def close(self) -> None:
+        """Release resources (HTTP clients, etc.)."""
+        if self.reranker and hasattr(self.reranker, "close"):
+            await self.reranker.close()
+
     async def run(
         self, question: str, images: Optional[List[str]] = None
     ) -> str:
         """Run the full retrieval pipeline.
 
+        Flow per round:
+            rewrite -> embed (batch) -> search -> dedup -> rerank -> summary -> sufficiency
+
         Args:
             question: User's question
-            images: Input image paths (reserved for future use)
+            images: Input image paths
 
         Returns:
             Experience string.  Empty string if nothing useful found.
         """
-        all_candidates: List[Dict[str, Any]] = []
+        assert self.config.max_retrieval_rounds >= 1, (
+            f"max_retrieval_rounds must be >= 1, got {self.config.max_retrieval_rounds}"
+        )
+
         search_context = ""
+        image_caption = ""
+        summary = ""
 
         for round_idx in range(self.config.max_retrieval_rounds):
+            logger.info(f"Retrieval round {round_idx + 1}/{self.config.max_retrieval_rounds}")
+
             # --- Step 1: Query Rewrite ---
             if self.query_rewriter and self.config.enable_query_rewrite:
                 query_result = await self.query_rewriter.rewrite(
                     question,
                     images,
-                    strategy=self.config.query_rewrite_strategy,
                     previous_context=search_context,
                 )
                 text_queries = query_result["text_queries"]
+                # Capture image_caption from first round (rewriter sees the images)
+                if round_idx == 0:
+                    image_caption = query_result.get("image_caption", "")
+                logger.info(f"  Rewrite → {len(text_queries)} queries, caption={bool(image_caption)}")
             else:
                 text_queries = [question]
 
-            # --- Step 2: Embed + Search ---
-            for q in text_queries:
-                q_emb = await self.embedder.encode_text([q])
+            # --- Step 2: Embed (batch) + Search ---
+            # Fresh candidates each round (new queries target the gap)
+            candidates: List[Dict[str, Any]] = []
+            all_embs = await self.embedder.encode_text(text_queries)
+            for i in range(len(text_queries)):
                 results = self.memory_bank.search(
-                    q_emb, top_k=self.config.retrieval_top_k
+                    all_embs[i: i + 1],
+                    top_k=self.config.retrieval_top_k,
+                    min_score=self.config.min_score,
                 )
-                all_candidates.extend(results)
+                candidates.extend(results)
 
             # Deduplicate by task_id
-            all_candidates = self._deduplicate(all_candidates)
+            before_dedup = len(candidates)
+            candidates = self._deduplicate(candidates)
+            logger.info(
+                f"  Search → {before_dedup} hits, {len(candidates)} after dedup "
+                f"(min_score={self.config.min_score})"
+            )
+
+            # No candidates above threshold — skip to next round or finish
+            if not candidates:
+                logger.info("  No candidates above min_score, skipping to next round")
+                continue
 
             # --- Step 3: Rerank ---
-            if self.config.enable_rerank and self.reranker:
-                # Build retrieval text for reranker scoring
-                for c in all_candidates:
-                    if "rerank_text" not in c:
-                        c["rerank_text"] = MemoryBank.build_index_text(c)
+            rerank_query = question
+            if image_caption:
+                rerank_query = f"{question}\nImage description: {image_caption}"
 
-                all_candidates = await self.reranker.rerank(
-                    question,
-                    all_candidates,
+            if self.config.enable_rerank and self.reranker:
+                for c in candidates:
+                    if "rerank_text" not in c:
+                        c["rerank_text"] = MemoryBank.build_index_text(
+                            c, caption=c.get("_caption", "")
+                        )
+
+                candidates = await self.reranker.rerank(
+                    rerank_query,
+                    candidates,
                     top_n=self.config.rerank_top_n,
                     text_key="rerank_text",
                 )
+                logger.info(
+                    f"  Rerank → top {len(candidates)}, "
+                    f"scores: {[round(c.get('rerank_score', 0), 4) for c in candidates]}"
+                )
             else:
-                # Sort by retrieval score, take top_n
-                all_candidates.sort(
+                candidates.sort(
                     key=lambda x: x.get("retrieval_score", 0), reverse=True
                 )
-                all_candidates = all_candidates[: self.config.rerank_top_n]
+                candidates = candidates[: self.config.rerank_top_n]
 
-            # --- Step 4: Sufficiency Check (multi-round only) ---
+            # --- Step 4: Summary ---
+            summary = await self._summarize(question, image_caption, candidates)
+            logger.info(f"  Summary → {len(summary)} chars")
+
+            # --- Step 5: Sufficiency Check (multi-round only) ---
             if (
                 self.config.max_retrieval_rounds > 1
                 and round_idx < self.config.max_retrieval_rounds - 1
                 and self.api_pool
             ):
-                is_sufficient, reason = await self._judge_sufficiency(
-                    question, all_candidates
+                is_sufficient, missing = await self._judge_sufficiency(
+                    question, image_caption, summary
                 )
+                logger.info(f"  Sufficiency → sufficient={is_sufficient}, missing='{missing}'")
                 if is_sufficient:
-                    break
-                search_context = self._build_search_context(all_candidates, reason)
+                    return summary
+                # Pass summary + gap to next round's rewriter
+                search_context = f"Current experience:\n{summary}\n\nGap: {missing}"
+            else:
+                return summary
 
-        # --- Step 5: Summary (always) ---
-        if not all_candidates:
-            return ""
-
-        return await self._summarize(question, all_candidates)
+        # Exhausted all rounds — return whatever we have
+        return summary
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     async def _summarize(
-        self, question: str, candidates: List[Dict[str, Any]]
+        self,
+        question: str,
+        image_caption: str,
+        candidates: List[Dict[str, Any]],
     ) -> str:
         """Summarize top candidates into experience via LLM."""
+        image_line = f"Image description: {image_caption}" if image_caption else ""
         examples_text = self._format_candidates(candidates)
-        prompt = SUMMARY_PROMPT.format(question=question, examples=examples_text)
+        prompt = SUMMARY_PROMPT.format(
+            question=question, image_line=image_line, examples=examples_text
+        )
 
         try:
             result = await self.api_pool.execute(
@@ -166,28 +222,31 @@ class RetrievalPipeline:
                 system="You are a concise experience summarizer.",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
-                max_tokens=300,
+                max_tokens=400,
             )
             return result.get("answer", "")
         except Exception as e:
             logger.warning(f"Summary failed: {e}")
-            # Fallback: use trace info directly
-            return "\n".join(
-                f"- Similar task: {c.get('input', {}).get('question', '')}, "
-                f"tools: {', '.join(s['tool'] for s in c.get('trace', []) if s.get('type') == 'action')}"
-                for c in candidates
-            )
+            # Fallback: list tools from each candidate
+            seen_tools: set = set()
+            for c in candidates:
+                for s in c.get("trace", []):
+                    if s.get("type") == "action" and "tool" in s:
+                        seen_tools.add(s["tool"])
+            return f"Similar tasks used tools: {', '.join(seen_tools)}." if seen_tools else ""
 
     async def _judge_sufficiency(
-        self, question: str, candidates: List[Dict[str, Any]]
+        self, question: str, image_caption: str, summary: str
     ) -> tuple:
-        """Judge if retrieved info is sufficient.
+        """Judge if the summarized experience is sufficient for the task.
 
         Returns:
-            Tuple of (is_sufficient: bool, reason: str)
+            Tuple of (is_sufficient: bool, missing: str)
         """
-        summary = self._brief_summary(candidates)
-        prompt = SUFFICIENCY_PROMPT.format(question=question, summary=summary)
+        image_line = f"Image description: {image_caption}" if image_caption else ""
+        prompt = SUFFICIENCY_PROMPT.format(
+            question=question, image_line=image_line, summary=summary
+        )
 
         try:
             result = await self.api_pool.execute(
@@ -199,7 +258,7 @@ class RetrievalPipeline:
             )
             parsed = JSONParser.parse(result.get("answer", ""))
             if isinstance(parsed, dict):
-                return parsed.get("sufficient", True), parsed.get("reason", "")
+                return parsed.get("sufficient", True), parsed.get("missing", "")
             return True, ""
         except Exception:
             return True, ""  # Default: sufficient (don't loop on error)
@@ -217,47 +276,35 @@ class RetrievalPipeline:
         return list(seen.values())
 
     def _format_candidates(self, candidates: List[Dict[str, Any]]) -> str:
-        """Format candidates for the summary LLM prompt."""
+        """Format candidates for the summary LLM prompt.
+
+        Each candidate shows: image description, question, and the full
+        reasoning chain (think/answer content + [tool_name], observations skipped).
+        """
         parts = []
         for i, c in enumerate(candidates, 1):
             question = c.get("input", {}).get("question", "N/A")
-            answer = c.get("answer", "N/A")
-            tools = [
-                s["tool"]
-                for s in c.get("trace", [])
-                if s.get("type") == "action"
-            ]
-            tools_str = ", ".join(tools) if tools else "none"
+            caption = c.get("_caption", "")
 
-            # Include think steps for richer context
-            thinks = [
-                s["content"]
-                for s in c.get("trace", [])
-                if s.get("type") == "think" and s.get("content")
-            ]
-            think_str = " | ".join(thinks[:2]) if thinks else "N/A"
+            # Build reasoning chain: think/answer → content, action → [tool], skip observation
+            steps = []
+            for s in c.get("trace", []):
+                stype = s.get("type", "")
+                if stype in ("think", "answer") and s.get("content"):
+                    steps.append(s["content"])
+                elif stype == "action" and "tool" in s:
+                    steps.append(f"[{s['tool']}]")
+                # observation → skip
 
-            parts.append(
-                f"### Example {i}\n"
-                f"- Question: {question}\n"
-                f"- Answer: {answer}\n"
-                f"- Tools used: {tools_str}\n"
-                f"- Reasoning: {think_str}"
-            )
+            steps_str = "\n  ".join(
+                f"{j}. {step}" for j, step in enumerate(steps, 1)
+            ) if steps else "N/A"
+
+            lines = [f"### Example {i}"]
+            if caption:
+                lines.append(f"- Image description: {caption}")
+            lines.append(f"- Question: {question}")
+            lines.append(f"- Steps:\n  {steps_str}")
+
+            parts.append("\n".join(lines))
         return "\n\n".join(parts)
-
-    def _brief_summary(self, candidates: List[Dict[str, Any]]) -> str:
-        """Brief summary for sufficiency check."""
-        return "; ".join(
-            f"[{c.get('sub_task', '')}] "
-            f"{c.get('input', {}).get('question', '')[:80]}"
-            for c in candidates
-        )
-
-    def _build_search_context(
-        self, candidates: List[Dict[str, Any]], reason: str
-    ) -> str:
-        """Build context for next round query rewrite."""
-        ctx = f"Previous retrieval found: {self._brief_summary(candidates)}\n"
-        ctx += f"Still need: {reason}"
-        return ctx
