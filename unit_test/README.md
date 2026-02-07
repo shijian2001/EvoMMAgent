@@ -5,32 +5,33 @@
 ### 1. Embedding 服务 (port 8001)
 
 ```bash
-vllm serve Qwen/Qwen3-VL-Embedding-2B \
+vllm serve /Path/to/Qwen3-VL-Embedding-8B \
     --runner pooling \
     --port 8001 \
-    --dtype float16
+    --dtype float16 \
+    --trust-remote-code \
+    --served-model-name qwen3vl-embed
 ```
 
 验证：
 ```bash
 curl http://localhost:8001/v1/embeddings \
   -H "Content-Type: application/json" \
-  -d '{"model": "Qwen/Qwen3-VL-Embedding-2B", "input": ["hello world"]}'
-# 预期：返回 JSON，data[0].embedding 是一个 float 数组（维度 2048）
+  -d '{"model": "qwen3vl-embed", "input": ["hello world"]}'
+# 预期：返回 JSON，data[0].embedding 是一个 float 数组（维度 4096）
 ```
-
-> 可选更大模型：`Qwen/Qwen3-VL-Embedding-8B`（维度 4096）
 
 ### 2. Reranker 服务 (port 8002)
 
 Qwen3-VL-Reranker 需要 `hf_overrides` 和 chat template（已提供在 `template/qwen3_vl_reranker.jinja`）。
 
 ```bash
-vllm serve Qwen/Qwen3-VL-Reranker-2B \
+vllm serve /Path/to/Qwen3-VL-Reranker-2B \
     --runner pooling \
     --port 8002 \
     --dtype float16 \
-    --max-model-len 4096 \
+    --max-model-len 32678 \
+    --served-model-name qwen3vl-reranker \
     --hf-overrides '{
       "architectures": ["Qwen3VLForSequenceClassification"],
       "classifier_from_token": ["no", "yes"],
@@ -44,7 +45,7 @@ vllm serve Qwen/Qwen3-VL-Reranker-2B \
 curl http://localhost:8002/v1/rerank \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Qwen/Qwen3-VL-Reranker-2B",
+    "model": "qwen3vl-reranker",
     "query": "What color is the car?",
     "documents": ["A red car on the road", "Blue sky"]
   }'
