@@ -159,7 +159,7 @@ class MemoryBank:
         if answer:
             parts.append(f"Answer: {answer}")
 
-        return ". ".join(parts)
+        return "\n".join(parts)
 
     @classmethod
     async def build(
