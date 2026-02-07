@@ -19,9 +19,7 @@ async def main():
         "max_iterations": 20,
         "max_retries": 20,
         "base_url": "https://maas.devops.xiaohongshu.com/v1",
-        "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
-        # "base_url": "https://maas.devops.xiaohongshu.com/v1",
-        # "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
+        "api_keys": [""],
     }
     
     # ============================================================
@@ -53,9 +51,47 @@ async def main():
     #     "mm_agent_template_en_file": "exp_prompt/more_tool_call/en.jinja2",
     #     "mm_agent_template_zh_file": "exp_prompt/more_tool_call/zh.jinja2",
     #     "base_url": "https://maas.devops.xiaohongshu.com/v1",
-    #     "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
+    #     "api_keys": [""],
     #     # "base_url": "http://10.217.65.160:8000/v1",
     #     # "api_keys": ["dummy key"],
+    # }
+    
+    # ============================================================
+    # Example 3: MMAgent with Tools + Retrieval (Self-Evolving)
+    # ============================================================
+    # agent_config = {
+    #     "tool_bank": [
+    #         "localize_objects", "zoom_in", "calculator", "crop",
+    #         "visualize_regions", "estimate_region_depth",
+    #         "estimate_object_depth", "get_image2images_similarity",
+    #         "get_image2texts_similarity", "get_text2images_similarity",
+    #     ],
+    #     "model_name": "qwen3-vl-8b-instruct",
+    #     "max_tokens": 40000,
+    #     "temperature": 0.7,
+    #     "enable_memory": False,
+    #     "max_iterations": 20,
+    #     "max_retries": 20,
+    #     "mm_agent_template_en_file": "exp_prompt/more_tool_call/en.jinja2",
+    #     "mm_agent_template_zh_file": "exp_prompt/more_tool_call/zh.jinja2",
+    #     "base_url": "https://maas.devops.xiaohongshu.com/v1",
+    #     "api_keys": [""],
+    #     # Retrieval config — enable to use experience from training traces
+    #     "retrieval": {
+    #         "enable": True,
+    #         "bank_memory_dir": "/path/to/training/memory",  # dir with tasks/ and bank/
+    #         "embedding_model": "Qwen/Qwen3-VL-Embedding-2B",
+    #         "embedding_base_url": "http://localhost:8001/v1",
+    #         "rerank_model": "Qwen/Qwen3-VL-Reranker-2B",
+    #         "rerank_base_url": "http://localhost:8002/v1",
+    #         "enable_query_rewrite": True,
+    #         "max_sub_queries": 3,
+    #         "retrieval_top_k": 10,
+    #         "enable_rerank": True,
+    #         "rerank_top_n": 3,
+    #         "min_score": 0.1,
+    #         "max_retrieval_rounds": 1,
+    #     },
     # }
     
     # Runner configuration
