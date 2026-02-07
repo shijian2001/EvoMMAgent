@@ -46,6 +46,7 @@ class MultimodalAgent(BasicAgent):
             memory_dir: Optional[str] = None,
             preload_devices: Optional[List[str]] = None,
             config: Optional[Any] = None,
+            retrieval: Optional[Dict] = None,
     ):
         """Initialize the multimodal agent.
         
@@ -72,11 +73,18 @@ class MultimodalAgent(BasicAgent):
             memory_dir: Directory for memory storage (uses config default if None)
             preload_devices: Devices for preloading models (inherited from base_agent)
             config: Optional Config object for default values (auto-loads if None)
+            retrieval: Optional retrieval config dict (overrides config.retrieval)
         """
         # Load config for defaults
         if config is None:
             from config import Config
             config = Config.default()
+        
+        # Override retrieval config from dict if provided
+        if retrieval:
+            from config import RetrievalConfig
+            config.retrieval = RetrievalConfig(**retrieval)
+        
         self.config = config
         
         # Apply config defaults if parameters not specified
