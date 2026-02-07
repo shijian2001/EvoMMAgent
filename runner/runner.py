@@ -509,4 +509,9 @@ class Runner:
             logger.info(f"\n📊 Overall Accuracy: {stats['accuracy']*100:.2f}% ({stats['correct']}/{stats['total']})")
             logger.info(f"{'='*80}\n")
         
+        # Release resources held by agents (e.g. Reranker HTTP clients)
+        for agent in self.agents:
+            if hasattr(agent, "close"):
+                await agent.close()
+        
         return stats
