@@ -53,12 +53,6 @@ def _parse_json_response(text: str) -> Dict:
     return {}
 
 
-def _write_jsonl(path: Path, records: List[Dict]) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-
-
 # ------------------------------------------------------------------ #
 #  Error Analyzer                                                     #
 # ------------------------------------------------------------------ #
@@ -93,25 +87,32 @@ class ErrorAnalyzer:
         counter = {"done": 0}
         lock = asyncio.Lock()
 
-        records = await asyncio.gather(
-            *(self._analyze_one(r, trace_index, counter, lock, total) for r in incorrect)
-        )
-        records = [r for r in records if r]
+        jsonl_path = output / "error_details.jsonl"
+        jsonl_file = open(jsonl_path, "w", encoding="utf-8")
+        state = {"done": 0, "file": jsonl_file, "records": []}
+        lock = asyncio.Lock()
 
-        _write_jsonl(output / "error_details.jsonl", records)
+        logger.info("Starting error analysis for %d cases (concurrency=%d)...",
+                     total, self.client._semaphore._value)
+        await asyncio.gather(
+            *(self._analyze_one(r, trace_index, state, lock, total) for r in incorrect)
+        )
+        jsonl_file.close()
+
+        records = state["records"]
         self._write_report(output / "report.md", len(results), records)
         logger.info("Saved %d error analyses to %s", len(records), output)
         return records
 
     async def _analyze_one(
         self, result: Dict, trace_index: Dict,
-        counter: Dict, lock: asyncio.Lock, total: int,
-    ) -> Optional[Dict]:
+        state: Dict, lock: asyncio.Lock, total: int,
+    ) -> None:
         idx = result["idx"]
         trace_path = trace_index.get(str(idx))
         if not trace_path:
             logger.warning("[idx=%s] Trace not found, skipping", idx)
-            return None
+            return
 
         trace_data = load_trace(trace_path)
         formatted = format_trace(trace_data.get("trace", []))
@@ -134,11 +135,7 @@ class ErrorAnalyzer:
             logger.error("[idx=%s] LLM call failed: %s", idx, e)
             parsed = {"error_categories": [], "analysis": f"FAILED: {e}"}
 
-        async with lock:
-            counter["done"] += 1
-            logger.info("[%d/%d] idx=%s done", counter["done"], total, idx)
-
-        return {
+        record = {
             "idx": idx,
             "dataset": result.get("dataset", ""),
             "sub_task": result.get("sub_task", ""),
@@ -152,6 +149,13 @@ class ErrorAnalyzer:
             "error_categories": parsed.get("error_categories", []),
             "analysis": parsed.get("analysis", ""),
         }
+
+        async with lock:
+            state["done"] += 1
+            state["records"].append(record)
+            state["file"].write(json.dumps(record, ensure_ascii=False) + "\n")
+            state["file"].flush()
+            logger.info("[%d/%d] idx=%s done", state["done"], total, idx)
 
     # ---- Report generation ---- #
 
@@ -262,13 +266,20 @@ class CompareAnalyzer:
         counter = {"done": 0}
         lock = asyncio.Lock()
 
-        records = await asyncio.gather(
-            *(self._analyze_one(d, t, trace_index, counter, lock, total)
+        jsonl_path = output / "compare_details.jsonl"
+        jsonl_file = open(jsonl_path, "w", encoding="utf-8")
+        state = {"done": 0, "file": jsonl_file, "records": []}
+        lock = asyncio.Lock()
+
+        logger.info("Starting comparison analysis for %d cases (concurrency=%d)...",
+                     total, self.client._semaphore._value)
+        await asyncio.gather(
+            *(self._analyze_one(d, t, trace_index, state, lock, total)
               for d, t in disagreements)
         )
-        records = [r for r in records if r]
+        jsonl_file.close()
 
-        _write_jsonl(output / "compare_details.jsonl", records)
+        records = state["records"]
         self._write_report(
             output / "report.md",
             len(set(direct_dict) & set(tool_dict)),
@@ -279,13 +290,13 @@ class CompareAnalyzer:
 
     async def _analyze_one(
         self, direct: Dict, tool: Dict, trace_index: Dict,
-        counter: Dict, lock: asyncio.Lock, total: int,
-    ) -> Optional[Dict]:
+        state: Dict, lock: asyncio.Lock, total: int,
+    ) -> None:
         idx = direct["idx"]
         trace_path = trace_index.get(str(idx))
         if not trace_path:
             logger.warning("[idx=%s] Trace not found, skipping", idx)
-            return None
+            return
 
         trace_data = load_trace(trace_path)
         formatted = format_trace(trace_data.get("trace", []))
@@ -314,11 +325,7 @@ class CompareAnalyzer:
                 "explanation": "",
             }
 
-        async with lock:
-            counter["done"] += 1
-            logger.info("[%d/%d] idx=%s done", counter["done"], total, idx)
-
-        return {
+        record = {
             "idx": idx,
             "dataset": direct.get("dataset", ""),
             "sub_task": direct.get("sub_task", ""),
@@ -336,6 +343,13 @@ class CompareAnalyzer:
             "key_difference": parsed.get("key_difference", ""),
             "explanation": parsed.get("explanation", ""),
         }
+
+        async with lock:
+            state["done"] += 1
+            state["records"].append(record)
+            state["file"].write(json.dumps(record, ensure_ascii=False) + "\n")
+            state["file"].flush()
+            logger.info("[%d/%d] idx=%s done", state["done"], total, idx)
 
     # ---- Report generation ---- #
 
