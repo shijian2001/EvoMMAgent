@@ -58,4 +58,4 @@ The input images are provided in order: {image_labels}.
 3. Identify which approach was correct and explain the root cause of the other's failure.
 
 Respond in this exact JSON format (no extra text):
-{{"correct_approach": "direct" or "tool" or "neither", "key_difference": "One sentence summarizing the core divergence.", "explanation": "3-5 sentences on why the approaches diverged and what caused the failure."}}"""
+{{"correct_approach": "direct" or "tool", "key_difference": "One sentence summarizing the core divergence.", "explanation": "3-5 sentences on why the approaches diverged and what caused the failure."}}"""
