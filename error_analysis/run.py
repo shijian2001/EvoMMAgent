@@ -38,9 +38,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Comparison sub-command
     cmp = sub.add_parser("compare", parents=[common], help="Compare direct vs w/tool")
-    cmp.add_argument("--direct_results", required=True, help="Direct results.jsonl")
-    cmp.add_argument("--tool_results", required=True, help="Tool results.jsonl")
-    cmp.add_argument("--memory_dir", required=True, help="Path to memory directory")
+    cmp.add_argument("--direct_results", required=True, help="Direct (no tools) results.jsonl")
+    cmp.add_argument("--tool_results", required=True, help="W/tool results.jsonl")
+    cmp.add_argument("--tool_memory_dir", required=True, help="W/tool memory directory (contains tasks/*/trace.json)")
 
     return parser
 
@@ -61,7 +61,7 @@ async def _run(args: argparse.Namespace) -> None:
             analyzer = CompareAnalyzer(client)
             await analyzer.analyze_all(
                 args.direct_results, args.tool_results,
-                args.memory_dir, args.output_dir,
+                args.tool_memory_dir, args.output_dir,
             )
 
 

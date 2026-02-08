@@ -29,7 +29,7 @@ python -m error_analysis error \
 python -m error_analysis compare \
   --direct_results /path/to/direct/results.jsonl \
   --tool_results /path/to/tool/results.jsonl \
-  --memory_dir /path/to/memory \
+  --tool_memory_dir /path/to/tool/memory \
   --output_dir ./compare_output \
   --api_key YOUR_API_KEY
 ```
