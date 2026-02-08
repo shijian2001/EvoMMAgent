@@ -159,6 +159,19 @@ class ErrorAnalyzer:
 
     # ---- Report generation ---- #
 
+    @staticmethod
+    def _cat_distribution_table(cat_counter: Counter, n: int) -> List[str]:
+        """Generate error category distribution table lines."""
+        lines = [
+            "| Category | Count | % of Errors |",
+            "|----------|-------|-------------|",
+        ]
+        for cat in ERROR_CATEGORIES:
+            cnt = cat_counter.get(cat, 0)
+            pct = cnt / n * 100 if n else 0
+            lines.append(f"| {cat} | {cnt} | {pct:.1f}% |")
+        return lines
+
     def _write_report(self, path: Path, total: int, records: List[Dict]) -> None:
         n = len(records)
         cat_counter: Counter = Counter()
@@ -168,12 +181,16 @@ class ErrorAnalyzer:
             cats = r.get("error_categories", [])
             for c in cats:
                 cat_counter[c] += 1
-            st = r.get("sub_task", "Unknown")
-            sub_task_data.setdefault(st, {"count": 0, "cats": Counter()})
+            st = r.get("sub_task") or "Unknown"
+            sub_task_data.setdefault(st, {"count": 0, "cats": Counter(), "records": []})
             sub_task_data[st]["count"] += 1
+            sub_task_data[st]["records"].append(r)
             for c in cats:
                 sub_task_data[st]["cats"][c] += 1
 
+        has_subtasks = len(sub_task_data) > 1 or "Unknown" not in sub_task_data
+
+        # --- Header ---
         lines = [
             "# Error Analysis Report\n",
             "| Metric | Value |",
@@ -183,39 +200,61 @@ class ErrorAnalyzer:
             f"| Analyzed | {n} |",
             f"| Generated | {datetime.now().strftime('%Y-%m-%d %H:%M')} |",
             "",
-            "## Error Category Distribution\n",
-            "| Category | Count | % of Errors |",
-            "|----------|-------|-------------|",
         ]
-        for cat in ERROR_CATEGORIES:
-            cnt = cat_counter.get(cat, 0)
-            pct = cnt / n * 100 if n else 0
-            lines.append(f"| {cat} | {cnt} | {pct:.1f}% |")
+
+        # --- Overall category distribution ---
+        lines += ["## Overall Error Category Distribution\n"]
+        lines += self._cat_distribution_table(cat_counter, n)
         lines += ["", "> Percentages may sum to >100% due to multi-label annotation.", ""]
 
-        lines += [
-            "## Breakdown by Sub-task\n",
-            "| Sub-task | Errors | Top Categories |",
-            "|----------|--------|----------------|",
-        ]
-        for st, d in sorted(sub_task_data.items()):
-            top = ", ".join(f"{c} ({cnt})" for c, cnt in d["cats"].most_common(3))
-            lines.append(f"| {st} | {d['count']} | {top} |")
-        lines += [""]
-
-        lines.append("## Case Details\n")
-        for i, r in enumerate(records, 1):
-            cats = ", ".join(r.get("error_categories", [])) or "N/A"
-            imgs = ", ".join(r.get("image_paths", []))
+        # --- Overview table ---
+        if has_subtasks:
             lines += [
-                f"### #{i} [idx={r['idx']}] {r.get('sub_task', '')}",
-                f"- **Question**: {r.get('question', '')}",
-                f"- **Images**: {imgs}",
-                f"- **Ground Truth**: {r.get('ground_truth', '')} | **Predicted**: {r.get('predicted', '')}",
-                f"- **Categories**: {cats}",
-                f"- **Analysis**: {r.get('analysis', '')}",
-                "",
+                "## Sub-task Overview\n",
+                "| Sub-task | Errors | Top Categories |",
+                "|----------|--------|----------------|",
             ]
+            for st, d in sorted(sub_task_data.items()):
+                top = ", ".join(f"{c} ({cnt})" for c, cnt in d["cats"].most_common(3))
+                lines.append(f"| {st} | {d['count']} | {top} |")
+            lines += [""]
+
+            # --- Per sub-task sections ---
+            for st, d in sorted(sub_task_data.items()):
+                sn = d["count"]
+                lines += [f"## Sub-task: {st} ({sn} errors)\n"]
+                lines += self._cat_distribution_table(d["cats"], sn)
+                lines += [""]
+
+                # Case details for this sub-task
+                lines.append(f"### Cases\n")
+                for i, r in enumerate(d["records"], 1):
+                    cats = ", ".join(r.get("error_categories", [])) or "N/A"
+                    imgs = ", ".join(r.get("image_paths", []))
+                    lines += [
+                        f"#### #{i} [idx={r['idx']}]",
+                        f"- **Question**: {r.get('question', '')}",
+                        f"- **Images**: {imgs}",
+                        f"- **Ground Truth**: {r.get('ground_truth', '')} | **Predicted**: {r.get('predicted', '')}",
+                        f"- **Categories**: {cats}",
+                        f"- **Analysis**: {r.get('analysis', '')}",
+                        "",
+                    ]
+        else:
+            # No subtasks — flat case list
+            lines.append("## Case Details\n")
+            for i, r in enumerate(records, 1):
+                cats = ", ".join(r.get("error_categories", [])) or "N/A"
+                imgs = ", ".join(r.get("image_paths", []))
+                lines += [
+                    f"### #{i} [idx={r['idx']}]",
+                    f"- **Question**: {r.get('question', '')}",
+                    f"- **Images**: {imgs}",
+                    f"- **Ground Truth**: {r.get('ground_truth', '')} | **Predicted**: {r.get('predicted', '')}",
+                    f"- **Categories**: {cats}",
+                    f"- **Analysis**: {r.get('analysis', '')}",
+                    "",
+                ]
 
         path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -360,13 +399,17 @@ class CompareAnalyzer:
 
         sub_task_data: Dict[str, Dict] = {}
         for r in records:
-            st = r.get("sub_task", "Unknown")
-            sub_task_data.setdefault(st, {"direct_wins": 0, "tool_wins": 0})
+            st = r.get("sub_task") or "Unknown"
+            sub_task_data.setdefault(st, {"direct_wins": 0, "tool_wins": 0, "records": []})
+            sub_task_data[st]["records"].append(r)
             if r.get("direct_is_correct"):
                 sub_task_data[st]["direct_wins"] += 1
             else:
                 sub_task_data[st]["tool_wins"] += 1
 
+        has_subtasks = len(sub_task_data) > 1 or "Unknown" not in sub_task_data
+
+        # --- Header ---
         lines = [
             "# Comparison Analysis Report\n",
             "| Metric | Value |",
@@ -377,28 +420,57 @@ class CompareAnalyzer:
             f"| Tool wins | {tool_wins} |",
             f"| Generated | {datetime.now().strftime('%Y-%m-%d %H:%M')} |",
             "",
-            "## Breakdown by Sub-task\n",
-            "| Sub-task | Direct Wins | Tool Wins |",
-            "|----------|-------------|-----------|",
         ]
-        for st, d in sorted(sub_task_data.items()):
-            lines.append(f"| {st} | {d['direct_wins']} | {d['tool_wins']} |")
-        lines += [""]
 
-        lines.append("## Case Details\n")
-        for i, r in enumerate(records, 1):
-            winner = "Direct" if r.get("direct_is_correct") else "Tool"
-            imgs = ", ".join(r.get("image_paths", []))
+        # --- Overview table ---
+        if has_subtasks:
             lines += [
-                f"### #{i} [idx={r['idx']}] {r.get('sub_task', '')} — {winner} wins",
-                f"- **Question**: {r.get('question', '')}",
-                f"- **Images**: {imgs}",
-                f"- **Ground Truth**: {r.get('ground_truth', '')}",
-                f"- **Direct**: {r.get('direct_predicted', '')} ({'correct' if r.get('direct_is_correct') else 'wrong'})",
-                f"- **Tool**: {r.get('tool_predicted', '')} ({'correct' if r.get('tool_is_correct') else 'wrong'})",
-                f"- **Key Difference**: {r.get('key_difference', '')}",
-                f"- **Explanation**: {r.get('explanation', '')}",
-                "",
+                "## Sub-task Overview\n",
+                "| Sub-task | Direct Wins | Tool Wins | Total |",
+                "|----------|-------------|-----------|-------|",
             ]
+            for st, d in sorted(sub_task_data.items()):
+                st_total = d["direct_wins"] + d["tool_wins"]
+                lines.append(f"| {st} | {d['direct_wins']} | {d['tool_wins']} | {st_total} |")
+            lines += [""]
+
+            # --- Per sub-task sections ---
+            for st, d in sorted(sub_task_data.items()):
+                st_total = d["direct_wins"] + d["tool_wins"]
+                lines += [
+                    f"## Sub-task: {st} (Direct {d['direct_wins']}, Tool {d['tool_wins']}, Total {st_total})\n",
+                    "### Cases\n",
+                ]
+                for i, r in enumerate(d["records"], 1):
+                    winner = "Direct" if r.get("direct_is_correct") else "Tool"
+                    imgs = ", ".join(r.get("image_paths", []))
+                    lines += [
+                        f"#### #{i} [idx={r['idx']}] — {winner} wins",
+                        f"- **Question**: {r.get('question', '')}",
+                        f"- **Images**: {imgs}",
+                        f"- **Ground Truth**: {r.get('ground_truth', '')}",
+                        f"- **Direct**: {r.get('direct_predicted', '')} ({'correct' if r.get('direct_is_correct') else 'wrong'})",
+                        f"- **Tool**: {r.get('tool_predicted', '')} ({'correct' if r.get('tool_is_correct') else 'wrong'})",
+                        f"- **Key Difference**: {r.get('key_difference', '')}",
+                        f"- **Explanation**: {r.get('explanation', '')}",
+                        "",
+                    ]
+        else:
+            # No subtasks — flat case list
+            lines.append("## Case Details\n")
+            for i, r in enumerate(records, 1):
+                winner = "Direct" if r.get("direct_is_correct") else "Tool"
+                imgs = ", ".join(r.get("image_paths", []))
+                lines += [
+                    f"### #{i} [idx={r['idx']}] — {winner} wins",
+                    f"- **Question**: {r.get('question', '')}",
+                    f"- **Images**: {imgs}",
+                    f"- **Ground Truth**: {r.get('ground_truth', '')}",
+                    f"- **Direct**: {r.get('direct_predicted', '')} ({'correct' if r.get('direct_is_correct') else 'wrong'})",
+                    f"- **Tool**: {r.get('tool_predicted', '')} ({'correct' if r.get('tool_is_correct') else 'wrong'})",
+                    f"- **Key Difference**: {r.get('key_difference', '')}",
+                    f"- **Explanation**: {r.get('explanation', '')}",
+                    "",
+                ]
 
         path.write_text("\n".join(lines), encoding="utf-8")
