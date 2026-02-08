@@ -26,7 +26,7 @@ The input images are provided in order: {image_labels}.
 1. Examine the input images yourself to understand what the correct answer should be.
 2. Review the agent's trace step by step, identifying where things went wrong.
 3. Select ALL applicable error categories.
-4. Write a concise root-cause analysis (2-4 sentences).
+4. Write a concise, insightful root-cause analysis that can inform future improvements. Avoid redundancy.
 
 Respond in this exact JSON format (no extra text):
 {{"error_categories": ["category1", "category2"], "analysis": "..."}}"""
@@ -58,4 +58,4 @@ The input images are provided in order: {image_labels}.
 3. Identify which approach was correct and explain the root cause of the other's failure.
 
 Respond in this exact JSON format (no extra text):
-{{"correct_approach": "direct" or "tool", "key_difference": "One sentence summarizing the core divergence.", "explanation": "3-5 sentences on why the approaches diverged and what caused the failure."}}"""
+{{"correct_approach": "direct" or "tool", "key_difference": "One sentence summarizing the core divergence.", "explanation": "Concisely explain why the approaches diverged and what caused the failure, with insights that can inform future improvements. Avoid redundancy."}}"""
