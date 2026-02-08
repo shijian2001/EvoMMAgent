@@ -89,8 +89,12 @@ class ErrorAnalyzer:
 
         trace_index = build_trace_index(memory_dir)
 
+        total = len(incorrect)
+        counter = {"done": 0}
+        lock = asyncio.Lock()
+
         records = await asyncio.gather(
-            *(self._analyze_one(r, trace_index) for r in incorrect)
+            *(self._analyze_one(r, trace_index, counter, lock, total) for r in incorrect)
         )
         records = [r for r in records if r]
 
@@ -100,7 +104,8 @@ class ErrorAnalyzer:
         return records
 
     async def _analyze_one(
-        self, result: Dict, trace_index: Dict
+        self, result: Dict, trace_index: Dict,
+        counter: Dict, lock: asyncio.Lock, total: int,
     ) -> Optional[Dict]:
         idx = result["idx"]
         trace_path = trace_index.get(str(idx))
@@ -128,6 +133,10 @@ class ErrorAnalyzer:
         except Exception as e:
             logger.error("[idx=%s] LLM call failed: %s", idx, e)
             parsed = {"error_categories": [], "analysis": f"FAILED: {e}"}
+
+        async with lock:
+            counter["done"] += 1
+            logger.info("[%d/%d] idx=%s done", counter["done"], total, idx)
 
         return {
             "idx": idx,
@@ -249,8 +258,13 @@ class CompareAnalyzer:
 
         trace_index = build_trace_index(memory_dir)
 
+        total = len(disagreements)
+        counter = {"done": 0}
+        lock = asyncio.Lock()
+
         records = await asyncio.gather(
-            *(self._analyze_one(d, t, trace_index) for d, t in disagreements)
+            *(self._analyze_one(d, t, trace_index, counter, lock, total)
+              for d, t in disagreements)
         )
         records = [r for r in records if r]
 
@@ -264,7 +278,8 @@ class CompareAnalyzer:
         return records
 
     async def _analyze_one(
-        self, direct: Dict, tool: Dict, trace_index: Dict
+        self, direct: Dict, tool: Dict, trace_index: Dict,
+        counter: Dict, lock: asyncio.Lock, total: int,
     ) -> Optional[Dict]:
         idx = direct["idx"]
         trace_path = trace_index.get(str(idx))
@@ -298,6 +313,10 @@ class CompareAnalyzer:
                 "key_difference": f"FAILED: {e}",
                 "explanation": "",
             }
+
+        async with lock:
+            counter["done"] += 1
+            logger.info("[%d/%d] idx=%s done", counter["done"], total, idx)
 
         return {
             "idx": idx,
