@@ -405,6 +405,10 @@ class MultimodalAgent(BasicAgent):
             except Exception as e:
                 logger.warning(f"Retrieval pipeline failed: {e}, proceeding without experience")
         
+        # Record experience in trace (empty string when retrieval is off)
+        if memory and experience:
+            memory.trace_data["experience"] = experience
+        
         # Build system prompt (simplified, without tool descriptions)
         system_prompt = self._build_system_prompt(experience=experience)
         
