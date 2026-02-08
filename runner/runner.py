@@ -53,6 +53,45 @@ def extract_answer(response: str, special_answer_token: str = "\nAnswer:") -> st
     return answer.split('\n')[0].strip()
 
 
+def _match_to_choice(predicted: str, choices: list, prefixes: list) -> str:
+    """Match predicted answer text to a choice.
+
+    Two strategies applied in order:
+      1. Prefix identifier with word boundary (regex) — handles A, (A), A., A), (A) xxx, 3, etc.
+      2. Choice text matching — exact first, then substring with min-length guard.
+
+    Args:
+        predicted: Predicted answer (already stripped)
+        choices: List of choice texts
+        prefixes: List of prefix strings (e.g. ['A','B','C'] or ['1','2','3'])
+
+    Returns:
+        Matched choice text, or None if no match
+    """
+    pred = predicted.strip().lower()
+    if not pred:
+        return None
+
+    # Strategy 1: Leading prefix identifier with word boundary
+    prefix_map = {p.lower(): i for i, p in enumerate(prefixes)}
+    m = re.match(r'^\(?([a-z]|\d+)\)?(?![a-z0-9])', pred)
+    if m and m.group(1) in prefix_map:
+        return choices[prefix_map[m.group(1)]].strip()
+
+    # Strategy 2a: Exact match on choice text
+    for c in choices:
+        if pred == c.strip().lower():
+            return c.strip()
+
+    # Strategy 2b: Substring match (min length 2 to avoid single-char false positives)
+    for c in choices:
+        cl = c.strip().lower()
+        if len(cl) > 1 and len(pred) > 1 and (cl in pred or pred in cl):
+            return c.strip()
+
+    return None
+
+
 def evaluate_answer(predicted: str, ground_truth: str, task_type: str, 
                    choices: list = None, option_format: str = 'letter') -> bool:
     """Evaluate answer correctness.
@@ -75,31 +114,10 @@ def evaluate_answer(predicted: str, ground_truth: str, task_type: str,
             # Fallback: direct comparison
             return predicted.strip().lower() == ground_truth.strip().lower()
         
-        # Generate formats for ALL choices
-        prefix1, prefix2, full_options = make_options(choices, format=option_format)
-        
-        # Try to match predicted with each choice
-        matched_choice = None
-        pred_lower = predicted.lower()
-        
-        for i, choice in enumerate(choices):
-            # Three formats for this choice
-            formats = [prefix1[i], prefix2[i], full_options[i]]
-            
-            # Check bidirectional match with any format
-            for fmt in formats:
-                fmt_lower = fmt.lower()
-                if fmt_lower in pred_lower or pred_lower in fmt_lower:
-                    matched_choice = choice.strip()
-                    break
-            
-            if matched_choice:
-                break
-        
-        # Compare matched choice with ground truth
-        if matched_choice:
-            return matched_choice.lower() == ground_truth.strip().lower()
-        
+        prefix1, _, _ = make_options(choices, format=option_format)
+        matched = _match_to_choice(predicted, choices, prefix1)
+        if matched:
+            return matched.lower() == ground_truth.strip().lower()
         return False
     
     else:
