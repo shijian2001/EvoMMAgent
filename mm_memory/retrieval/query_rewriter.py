@@ -5,7 +5,9 @@ alternative text queries to improve retrieval recall.  The LLM sees both
 the question and all input images in a single multimodal call.
 """
 
+import base64
 import logging
+import mimetypes
 from typing import Any, Dict, List, Optional
 
 from api.json_parser import JSONParser
@@ -42,6 +44,16 @@ class QueryRewriter:
         """
         self.api_pool = api_pool
         self.max_sub_queries = max_sub_queries
+
+    @staticmethod
+    def _image_to_data_uri(path: str) -> str:
+        """Convert a local image file to a base64 data URI."""
+        mime, _ = mimetypes.guess_type(path)
+        if not mime or not mime.startswith("image/"):
+            mime = "image/jpeg"
+        with open(path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
 
     async def rewrite(
         self,
@@ -108,8 +120,9 @@ class QueryRewriter:
         if images:
             content: Any = [{"type": "text", "text": prompt}]
             for img_path in images:
+                data_uri = self._image_to_data_uri(img_path)
                 content.append(
-                    {"type": "image_url", "image_url": {"url": img_path}}
+                    {"type": "image_url", "image_url": {"url": data_uri}}
                 )
         else:
             content = prompt

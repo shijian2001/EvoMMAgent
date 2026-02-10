@@ -9,9 +9,12 @@ All trace data is loaded on-demand from ``{memory_dir}/tasks/{task_id}/trace.jso
 """
 
 import asyncio
+import base64
 import json
 import logging
+import mimetypes
 import os
+from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -192,6 +195,25 @@ class MemoryBank:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _image_to_data_uri(path: str) -> str:
+        """Convert a local image file to a base64 data URI.
+
+        Args:
+            path: Local file path to an image
+
+        Returns:
+            ``data:image/<mime>;base64,...`` string
+        """
+        mime, _ = mimetypes.guess_type(path)
+        if not mime or not mime.startswith("image/"):
+            mime = "image/jpeg"
+
+        with open(path, "rb") as f:
+            img_bytes = f.read()
+        b64 = base64.b64encode(img_bytes).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
+
+    @staticmethod
     async def _generate_caption(api_pool, image_paths: List[str]) -> str:
         """Generate a concise caption for input images via VLM.
 
@@ -204,7 +226,8 @@ class MemoryBank:
         """
         content: list = [{"type": "text", "text": CAPTION_PROMPT}]
         for p in image_paths:
-            content.append({"type": "image_url", "image_url": {"url": p}})
+            data_uri = MemoryBank._image_to_data_uri(p)
+            content.append({"type": "image_url", "image_url": {"url": data_uri}})
 
         try:
             result = await api_pool.execute(
