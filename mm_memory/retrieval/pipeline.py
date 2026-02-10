@@ -32,7 +32,9 @@ Write concise sentences of actionable experience. Focus on:
 - What common mistakes to avoid
 
 Write in a direct, advisory tone as if briefing a colleague. Do not reference \
-specific example numbers or task labels. Do not repeat the question."""
+specific example numbers or task labels. Do not repeat the question. \
+Do not include any specific answers, answer choices, or concrete analysis of \
+particular examples. The experience should be universally applicable to similar tasks."""
 
 SUFFICIENCY_PROMPT = """\
 Judge whether the following experience is sufficient to guide solving the \
