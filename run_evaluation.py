@@ -12,14 +12,14 @@ async def main():
     # ============================================================
     agent_config = {
         "tool_bank": None,  # No tools
-        "model_name": "qwen3-vl-8b-instruct", # qwen2.5-vl-72b-instruct, qwen-2.5-vl-72b-instruct, qwen3-vl-235b-a22b-instruct, qwen3-vl-8b-instruct, qwen3-vl-32b-instruct
+        "model_name": "qwen3-vl-32b-instruct", # qwen2.5-vl-72b-instruct, qwen-2.5-vl-72b-instruct, qwen3-vl-235b-a22b-instruct, qwen3-vl-8b-instruct, qwen3-vl-32b-instruct
         "max_tokens": 40000,
         "temperature": 0.7,
         "enable_memory": False,  # No memory
         "max_iterations": 20,
         "max_retries": 20,
         "base_url": "https://maas.devops.xiaohongshu.com/v1",
-        "api_keys": [""],
+        "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
     }
     
     # ============================================================
@@ -41,17 +41,17 @@ async def main():
     #         "get_image2texts_similarity", 
     #         "get_text2images_similarity"
     #     ],
-    #     "model_name": "qwen3-vl-8b-instruct",
+    #     "model_name": "qwen3-vl-32b-instruct",
     #     "max_tokens": 40000,
     #     "temperature": 0.7,
     #     "enable_memory": False,
     #     "max_iterations": 20,
-    #     "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260204/blink/qwen3vl_8b/w_tool",
+    #     "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260210/retrieve_exp/meta_train/blink/qwen3vl_32b/w_tool",
     #     "max_retries": 20,
     #     "mm_agent_template_en_file": "exp_prompt/more_tool_call/en.jinja2",
     #     "mm_agent_template_zh_file": "exp_prompt/more_tool_call/zh.jinja2",
     #     "base_url": "https://maas.devops.xiaohongshu.com/v1",
-    #     "api_keys": [""],
+    #     "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
     #     # "base_url": "http://10.217.65.160:8000/v1",
     #     # "api_keys": ["dummy key"],
     # }
@@ -66,40 +66,41 @@ async def main():
     #         "estimate_object_depth", "get_image2images_similarity",
     #         "get_image2texts_similarity", "get_text2images_similarity",
     #     ],
-    #     "model_name": "qwen3-vl-8b-instruct",
+    #     "model_name": "qwen3-vl-32b-instruct",
     #     "max_tokens": 40000,
     #     "temperature": 0.7,
     #     "enable_memory": False,
+    #     "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260210/retrieve_exp/meta_test/blink/qwen3vl_32b/w_retrieve_2",
     #     "max_iterations": 20,
     #     "max_retries": 20,
     #     "mm_agent_template_en_file": "exp_prompt/more_tool_call/en.jinja2",
     #     "mm_agent_template_zh_file": "exp_prompt/more_tool_call/zh.jinja2",
     #     "base_url": "https://maas.devops.xiaohongshu.com/v1",
-    #     "api_keys": [""],
+    #     "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
     #     # Retrieval config — enable to use experience from training traces
     #     "retrieval": {
     #         "enable": True,
-    #         "bank_memory_dir": "/path/to/training/memory",  # dir with tasks/ and bank/
-    #         "embedding_model": "Qwen/Qwen3-VL-Embedding-2B",
+    #         "bank_memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260210/retrieve_exp/meta_train/blink/qwen3vl_32b/w_tool",  # dir with tasks/ and bank/
+    #         "embedding_model": "qwen3vl-embed",
     #         "embedding_base_url": "http://localhost:8001/v1",
-    #         "rerank_model": "Qwen/Qwen3-VL-Reranker-2B",
+    #         "rerank_model": "qwen3vl-reranker",
     #         "rerank_base_url": "http://localhost:8002/v1",
     #         "enable_query_rewrite": True,
     #         "max_sub_queries": 3,
     #         "retrieval_top_k": 10,
     #         "enable_rerank": True,
-    #         "rerank_top_n": 3,
-    #         "min_score": 0.1,
-    #         "max_retrieval_rounds": 1,
+    #         "rerank_top_n": 5,
+    #         "min_score": 0.01,
+    #         "max_retrieval_rounds": 5,
     #     },
     # }
     
     # Runner configuration
     runner = Runner(
-        jsonl_path="data/eval/image/BLINK/blink_data.jsonl",
+        jsonl_path="data/eval/image/BLINK/blink_data_meta_train.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/20260204/blink/qwen3vl_8b/direct",
+        output_dir="eval_results/20260210/retrieve_exp/meta_train/blink/qwen3vl_32b/direct",
         batch_size=100,
         max_concurrent=10,
         verbose=True
