@@ -1,4 +1,4 @@
-"""Retrieval pipeline orchestrator.
+"""Trace-level retrieval pipeline orchestrator.
 
 Coordinates query rewriting, embedding search, reranking, LLM summary,
 and sufficiency checking to produce experience for the agent.
@@ -49,8 +49,8 @@ Respond in JSON: {{"sufficient": true/false, "missing": "if not sufficient, \
 one phrase describing the unaddressed aspect; empty string if sufficient"}}"""
 
 
-class RetrievalPipeline:
-    """Orchestrates query rewrite -> embed -> search -> rerank -> summary."""
+class TracePipeline:
+    """Trace-level retrieval: query rewrite -> embed -> search -> rerank -> summary."""
 
     def __init__(
         self,

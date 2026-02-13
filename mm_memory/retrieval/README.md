@@ -1,109 +1,135 @@
 # Retrieval-Augmented Experience Pipeline
 
-## Overview
+Two retrieval modes, switchable via `config.retrieval.mode`:
 
-Agent 在推理前，从历史成功 trace 中检索相似任务的经验，注入 system prompt 指导当前任务。
+| Mode | Granularity | Experience source | Online cost |
+|------|-------------|-------------------|-------------|
+| `state` | Per-step (MDP state) | Hindsight-annotated (state, action) pairs | 1 embedding call/step |
+| `trace` | Per-task | Summarized from similar traces | LLM rewrite + rerank + summary |
+
+---
+
+## State-Level Retrieval (`mode="state"`)
+
+Agent 推理的每一步，根据当前 state 从历史轨迹中检索最相关的决策经验，注入 conversation。
 
 ```
-训练集 traces ──[offline build]──→ Memory Bank (embeddings + captions)
+正确 traces ──[offline]──→ MDP trajectory ──→ LLM hindsight annotation
+                                                    │
+                                            Q-value + experience per (s, a)
+                                                    │
+                                            embed states → state_bank/
+                                                    │
+推理时每一步: serialize state → embed → cosine search → inject experience
+```
+
+### Offline: 构建 State Bank
+
+```bash
+python scripts/build_state_bank.py \
+    --memory_dir memory/train_run/ \
+    --llm_model qwen3-vl-235b-a22b-instruct \
+    --llm_base_url https://maas.devops.xiaohongshu.com/v1 \
+    --llm_api_key YOUR_KEY \
+    --embedding_model Qwen/Qwen3-VL-Embedding-2B \
+    --embedding_base_url http://localhost:8001/v1 \
+    --min_q 5
+```
+
+流程（全部 in-memory，不修改原始 trace.json）：
+1. 扫描 `tasks/*/trace.json`，过滤 `is_correct=True`
+2. 转换为 MDP trajectory：`think + action → atomic action a_t = (thinking, tool, params, observation)`，answer 作为终端 action
+3. VL 模型 hindsight 标注：一次 LLM 调用/trace，输入完整轨迹 + 原始图片，输出每个 (state, action) 的 Q-value (0-10) 和 experience (1-2 句)
+4. 过滤 Q >= min_q 的 state，用 `StateBank.state_to_text()` 序列化
+5. Embedding 编码 → 持久化 `state_bank/embeddings.npy` + `state_meta.json`
+
+### Online: 每步检索
+
+每轮 agent 迭代开始时：
+1. `StateBank.state_to_text()` 序列化当前 state（与离线同一函数，格式一致）
+2. Embed → cosine search StateBank（Q-value 二次过滤）
+3. 取 top `experience_top_n` 条预计算 experience，注入为 user message
+4. 下一轮开始前清除旧 experience message
+
+**无在线 LLM 调用，无 rerank，延迟极低。**
+
+### 配置项
+
+| 配置项 | 默认 | 说明 |
+|-------|------|------|
+| `mode` | `"state"` | 设为 `"state"` 启用 |
+| `min_q_value` | `5` | Q-value 过滤阈值 |
+| `experience_top_n` | `1` | 每步注入的 experience 条数 |
+| `retrieval_top_k` | `10` | cosine 候选数（过滤前） |
+| `min_score` | `0.1` | cosine 相似度阈值 |
+
+---
+
+## Trace-Level Retrieval (`mode="trace"`)
+
+Agent 推理前，从历史成功 trace 中检索相似任务的经验，注入 system prompt。
+
+```
+正确 traces ──[offline build]──→ Trace Bank (embeddings + captions)
                                         │
-新 task (question, images) ──────→ Retrieval Pipeline ──→ experience string
+新 task (question, images) ──────→ TracePipeline ──→ experience string
                                         │
                                   agent system prompt ← "## Experience from Similar Tasks"
 ```
 
-## Offline: 构建 Memory Bank
+### Offline: 构建 Trace Bank
 
 ```bash
 python scripts/build_memory_bank.py \
     --memory_dir memory/train_run/ \
     --embedding_model Qwen/Qwen3-VL-Embedding-2B \
     --embedding_base_url http://localhost:8001/v1 \
-    --llm_model qwen3-vl-32b-instruct \          # 可选，生成图像 caption
+    --llm_model qwen3-vl-32b-instruct \
     --llm_base_url https://... --llm_api_key ...
 ```
 
 流程：
 1. 扫描 `tasks/*/trace.json`，过滤 `is_correct=True`
-2. （可选）VLM 为每条 trace 的输入图像生成 caption（并发 sem=8）
-3. 构建 index text = `Image description: {caption}\n{question}\nTask: {sub_task}\nTools (in order): {tools}`
-4. Embedding 模型编码所有 index text
-5. 持久化 → `bank/embeddings.npy` + `task_ids.json` + `captions.json`
+2. （可选）VLM 为每条 trace 的输入图像生成 caption
+3. 构建 index text = `Image description: {caption}\n{question}\nTask: {sub_task}\nTools: {tools}`
+4. Embedding 编码 → 持久化 `trace_bank/embeddings.npy` + `task_ids.json` + `captions.json`
 
-## Online: 检索流程（每个 task）
-
-```
-┌───────────────────── Round N (每轮独立) ─────────────────────┐
-│                                                              │
-│  ① Query Rewrite (LLM, multimodal)                          │
-│     input:  question + images + search_context(多轮)         │
-│     output: text_queries[], image_caption                    │
-│                                                              │
-│  ② Embed + Search                                           │
-│     - encode_text(text_queries) → 一次 batch API call        │
-│     - 逐 query 搜索 bank (cosine, min_score 过滤)            │
-│     - 每轮独立搜索，不与上轮混合                                │
-│                                                              │
-│  ③ Deduplicate                                              │
-│     - 按 task_id 去重，保留最高 retrieval_score               │
-│                                                              │
-│  ④ Rerank                                                   │
-│     - query = question + image_caption                       │
-│     - document = build_index_text(trace, caption)            │
-│     - 取 top_n                                               │
-│                                                              │
-│  ⑤ Summary (LLM)                                            │
-│     - 输入：question + image_caption + candidates 推理链      │
-│     - 输出：actionable experience (几句话)                    │
-│                                                              │
-│  ⑥ Sufficiency Check (LLM, 仅多轮)                          │
-│     - 判断 experience 是否足够                                │
-│     - YES → return experience                                │
-│     - NO  → search_context = summary + gap → 下一轮 ①        │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-## 注入 Agent
-
-experience 通过 Jinja template 注入 system prompt：
+### Online: 检索流程
 
 ```
-## Experience from Similar Tasks
-The following experience is derived from similar previously solved tasks.
-Use it as reference, not as strict rules.
-
-{experience}
+① Query Rewrite (LLM) → text_queries + image_caption
+② Embed + cosine search trace_bank
+③ Deduplicate by task_id
+④ Rerank (top_n)
+⑤ Summary (LLM) → experience string
+⑥ (多轮) Sufficiency check → 下一轮 or return
 ```
 
-experience 为空时不渲染该 section。Pipeline 任何异常均 fallback 到空 experience，不影响 agent 正常执行。
-
-## 可插拔开关
+### 配置项
 
 | 配置项 | 默认 | 说明 |
 |-------|------|------|
-| `enable` | `False` | 总开关，关闭时完全不初始化 |
-| `enable_query_rewrite` | `True` | 关闭后直接用原始 question 检索 |
-| `enable_rerank` | `True` | 关闭后按 retrieval_score 排序取 top_n |
-| `max_retrieval_rounds` | `1` | 1=单轮，2+=多轮 deep research |
-| `min_score` | `0.1` | cosine 相似度阈值，低于此分的 trace 不返回 |
+| `mode` | — | 设为 `"trace"` 启用 |
+| `enable_rerank` | `True` | 关闭后按 retrieval_score 排序 |
+| `enable_query_rewrite` | `True` | 关闭后直接用原始 question |
+| `max_retrieval_rounds` | `1` | 1=单轮，2+=多轮 |
+
+---
 
 ## 文件结构
 
 ```
 mm_memory/
-├── memory_bank.py           # MemoryBank: 索引加载、搜索、offline build
+├── memory_bank.py              # MemoryBank: trace-level 索引 (trace_bank/)
+├── state_bank.py               # StateBank: state-level 索引 (state_bank/)
 └── retrieval/
     ├── __init__.py
-    ├── pipeline.py           # RetrievalPipeline: 流程编排
-    ├── query_rewriter.py     # QueryRewriter: LLM 多模态改写
-    ├── embedder.py           # Embedder: vLLM /v1/embeddings
-    └── reranker.py           # Reranker: vLLM /v1/rerank
+    ├── trace_pipeline.py       # TracePipeline: trace-level 流程编排
+    ├── state_pipeline.py       # StatePipeline: state-level 检索
+    ├── query_rewriter.py       # QueryRewriter: LLM 多模态改写 (trace mode)
+    ├── embedder.py             # Embedder: vLLM /v1/embeddings (shared)
+    └── reranker.py             # Reranker: vLLM /v1/rerank (trace mode)
 scripts/
-└── build_memory_bank.py      # Offline 构建脚本
+├── build_state_bank.py         # State-level offline 构建
+└── build_memory_bank.py        # Trace-level offline 构建
 ```
-
-## TODO
-
-- **推理时增量扩展 Bank**：agent 推理成功后，新 trace 自动追加进 bank。设计为异步后台 rebuild（不阻塞 agent），可按时间间隔或累积条数触发。当前架构已支持（Memory 系统自动保存 trace，`build_memory_bank.py` 可重复执行），只需增加触发机制。
-- **Bank 规模扩展**：当前全量 cosine 扫描，万级 trace 无压力。若扩展到十万级以上，考虑换 FAISS 近似最近邻。

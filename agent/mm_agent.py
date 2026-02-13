@@ -151,61 +151,73 @@ class MultimodalAgent(BasicAgent):
             self._init_retrieval_pipeline(config.retrieval)
     
     
-    def _init_retrieval_pipeline(self, retrieval_config) -> None:
+    def _init_retrieval_pipeline(self, rc) -> None:
         """Initialize the retrieval pipeline from config.
         
-        Only called when ``retrieval_config.enable`` is True.
+        Only called when ``rc.enable`` is True.
         Imports are deferred so that retrieval dependencies are not
         required when the feature is disabled.
         
         Args:
-            retrieval_config: ``RetrievalConfig`` instance
+            rc: ``RetrievalConfig`` instance
         """
-        from mm_memory.memory_bank import MemoryBank
         from mm_memory.retrieval.embedder import Embedder
-        from mm_memory.retrieval.reranker import Reranker
-        from mm_memory.retrieval.query_rewriter import QueryRewriter
-        from mm_memory.retrieval.pipeline import RetrievalPipeline
-        
-        memory_bank = MemoryBank(retrieval_config.bank_memory_dir)
         
         embedder = Embedder(
-            model_name=retrieval_config.embedding_model,
-            base_url=retrieval_config.embedding_base_url,
-            api_key=retrieval_config.embedding_api_key or "dummy",
+            model_name=rc.embedding_model,
+            base_url=rc.embedding_base_url,
+            api_key=rc.embedding_api_key or "dummy",
         )
         
-        reranker = None
-        if retrieval_config.enable_rerank and retrieval_config.rerank_model:
-            reranker = Reranker(
-                model_name=retrieval_config.rerank_model,
-                base_url=retrieval_config.rerank_base_url,
-                api_key=retrieval_config.rerank_api_key or "dummy",
-            )
-        
-        query_rewriter = None
-        if retrieval_config.enable_query_rewrite:
-            query_rewriter = QueryRewriter(
+        if rc.mode == "trace":
+            from mm_memory.retrieval.reranker import Reranker
+            from mm_memory.memory_bank import MemoryBank
+            from mm_memory.retrieval.trace_pipeline import TracePipeline
+            from mm_memory.retrieval.query_rewriter import QueryRewriter
+            
+            reranker = None
+            if rc.enable_rerank and rc.rerank_model:
+                reranker = Reranker(
+                    model_name=rc.rerank_model,
+                    base_url=rc.rerank_base_url,
+                    api_key=rc.rerank_api_key or "dummy",
+                )
+            
+            memory_bank = MemoryBank(rc.bank_memory_dir)
+            query_rewriter = None
+            if rc.enable_query_rewrite:
+                query_rewriter = QueryRewriter(
+                    api_pool=self.api_pool,
+                    max_sub_queries=rc.max_sub_queries,
+                )
+            
+            self.retrieval_pipeline = TracePipeline(
+                config=rc,
+                memory_bank=memory_bank,
+                embedder=embedder,
+                reranker=reranker,
                 api_pool=self.api_pool,
-                max_sub_queries=retrieval_config.max_sub_queries,
+                query_rewriter=query_rewriter,
             )
         
-        self.retrieval_pipeline = RetrievalPipeline(
-            config=retrieval_config,
-            memory_bank=memory_bank,
-            embedder=embedder,
-            reranker=reranker,
-            api_pool=self.api_pool,
-            query_rewriter=query_rewriter,
-        )
+        elif rc.mode == "state":
+            from mm_memory.state_bank import StateBank
+            from mm_memory.retrieval.state_pipeline import StatePipeline
+            
+            state_bank = StateBank(rc.bank_memory_dir)
+            self.retrieval_pipeline = StatePipeline(
+                config=rc,
+                state_bank=state_bank,
+                embedder=embedder,
+            )
+        
+        else:
+            raise ValueError(f"Unknown retrieval mode: {rc.mode}")
         
         logger.info(
-            f"Retrieval pipeline initialized: "
-            f"bank={retrieval_config.bank_memory_dir}, "
-            f"embedding={retrieval_config.embedding_model}, "
-            f"rerank={'enabled' if reranker else 'disabled'}, "
-            f"query_rewrite={'enabled' if query_rewriter else 'disabled'}, "
-            f"max_rounds={retrieval_config.max_retrieval_rounds}"
+            f"Retrieval pipeline initialized: mode={rc.mode}, "
+            f"bank={rc.bank_memory_dir}, "
+            f"embedding={rc.embedding_model}"
         )
     
     async def close(self) -> None:
@@ -389,9 +401,9 @@ class MultimodalAgent(BasicAgent):
                 if vid_path and os.path.exists(vid_path):
                     memory.add_input(vid_path, "vid")
         
-        # Retrieval pre-processing (pluggable, skipped when pipeline is None)
+        # Trace-level retrieval pre-processing (one-shot before loop)
         experience = ""
-        if self.retrieval_pipeline:
+        if self.retrieval_pipeline and self.config.retrieval.mode == "trace":
             try:
                 image_paths = None
                 if images:
@@ -401,9 +413,9 @@ class MultimodalAgent(BasicAgent):
                     ]
                 experience = await self.retrieval_pipeline.run(query, image_paths)
                 if verbose and experience:
-                    logger.info(f"Retrieved experience ({len(experience)} chars)")
+                    logger.info(f"Retrieved trace-level experience ({len(experience)} chars)")
             except Exception as e:
-                logger.warning(f"Retrieval pipeline failed: {e}, proceeding without experience")
+                logger.warning(f"Trace retrieval failed: {e}, proceeding without experience")
         
         # Record experience in trace (empty string when retrieval is off)
         if memory and experience:
@@ -460,7 +472,36 @@ class MultimodalAgent(BasicAgent):
         # Track execution history for logging
         history = []
         
+        # State-level retrieval: maintain trajectory for state serialization
+        current_trajectory = []
+        _EXPERIENCE_TAG = "[Experience from similar reasoning states]"
+        
         for iteration in range(self.max_iterations):
+            # State-level retrieval: retrieve experience for current state
+            if self.retrieval_pipeline and self.config.retrieval.mode == "state":
+                # Remove previous experience message (if any)
+                conversation_history = [
+                    msg for msg in conversation_history
+                    if not (msg.get("role") == "user"
+                            and isinstance(msg.get("content"), str)
+                            and msg["content"].startswith(_EXPERIENCE_TAG))
+                ]
+                from mm_memory.state_bank import StateBank
+                state_text = StateBank.state_to_text(
+                    memory.trace_data, current_trajectory, len(current_trajectory)
+                )
+                try:
+                    exp = await self.retrieval_pipeline.retrieve(state_text)
+                    if exp:
+                        conversation_history.append({
+                            "role": "user",
+                            "content": f"{_EXPERIENCE_TAG}\n{exp}",
+                        })
+                        if verbose:
+                            logger.info(f"Retrieved state-level experience ({len(exp)} chars)")
+                except Exception as e:
+                    logger.warning(f"State retrieval failed: {e}")
+            
             # Clean old images from history (keep only most recent tool message images)
             # Only clean when memory is enabled, as images can be retrieved via get_images
             if iteration >= 1 and self.enable_memory:
@@ -800,6 +841,17 @@ class MultimodalAgent(BasicAgent):
                     "observation": observation,
                 })
                 
+                # Update trajectory for state-level retrieval
+                current_trajectory.append({
+                    "state_index": len(current_trajectory),
+                    "action": {
+                        "thinking": assistant_content or "",
+                        "tool": tool_name,
+                        "parameters": original_properties or {},
+                        "observation": observation or "",
+                    }
+                })
+                
             else:
                 # No tool calls - this is the final answer
                 final_answer = response.get("answer", "")
@@ -820,6 +872,9 @@ class MultimodalAgent(BasicAgent):
                     "iteration": iteration + 1,
                     "final_response": final_answer,
                 })
+                
+                # answer IS a decision point, but no retrieval follows the terminal step.
+                # The offline pipeline (convert_trace_to_trajectory) handles answer entries.
                 
                 if verbose:
                     logger.info(f"\n{'='*80}")

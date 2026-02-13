@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Test 3: QueryRewriter + Full RetrievalPipeline.
+"""Test 3: QueryRewriter + Full TracePipeline.
 
 Covers:
   - QueryRewriter.rewrite（多模态，带/不带上轮 context，image_caption + variable queries）
-  - RetrievalPipeline.run 四种组合：
+  - TracePipeline.run 四种组合：
     a) 单轮 + 全功能（rewrite + rerank）
     b) 多轮 (2 rounds) + sufficiency 判断
     c) 关闭 rewrite
     d) 关闭 rerank
 
 Usage:
-    python unit_test/test_pipeline.py \
+    python unit_test/trace_level/test_pipeline.py \
         --embedding_model Qwen/Qwen3-VL-Embedding-2B \
         --embedding_base_url http://localhost:8001/v1 \
         --rerank_model Qwen/Qwen3-VL-Reranker-2B \
@@ -24,6 +24,8 @@ import argparse
 import asyncio
 import os
 import shutil
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from helpers import create_fake_memory_dir, cleanup, ok, section
 
@@ -33,7 +35,7 @@ from mm_memory.memory_bank import MemoryBank
 from mm_memory.retrieval.embedder import Embedder
 from mm_memory.retrieval.reranker import Reranker
 from mm_memory.retrieval.query_rewriter import QueryRewriter
-from mm_memory.retrieval.pipeline import RetrievalPipeline
+from mm_memory.retrieval.trace_pipeline import TracePipeline
 
 
 # ── QueryRewriter ────────────────────────────────────────────────────────────
@@ -77,11 +79,11 @@ async def test_pipeline(
     embedder: Embedder, reranker: Reranker,
     api_pool: APIPool, rewriter: QueryRewriter,
 ):
-    """验证 RetrievalPipeline.run 在不同配置下都能正常返回 experience。"""
+    """验证 TracePipeline.run 在不同配置下都能正常返回 experience。"""
     section("2. Full Pipeline")
 
-    # 先用真实 embedding 构建 bank（无 caption — 测试环境无真实图像文件）
-    bank_dir = os.path.join(memory_dir, "bank")
+    # 先用真实 embedding 构建 trace_bank（无 caption — 测试环境无真实图像文件）
+    bank_dir = os.path.join(memory_dir, "trace_bank")
     if os.path.exists(bank_dir):
         shutil.rmtree(bank_dir)
     bank = await MemoryBank.build(
@@ -99,7 +101,7 @@ async def test_pipeline(
         retrieval_top_k=3, enable_rerank=True, rerank_top_n=2,
         max_retrieval_rounds=1,
     )
-    pipeline_a = RetrievalPipeline(
+    pipeline_a = TracePipeline(
         config=config_a, memory_bank=bank,
         embedder=embedder, reranker=reranker,
         api_pool=api_pool, query_rewriter=rewriter,
@@ -118,7 +120,7 @@ async def test_pipeline(
         retrieval_top_k=3, enable_rerank=True, rerank_top_n=2,
         max_retrieval_rounds=2,
     )
-    pipeline_b = RetrievalPipeline(
+    pipeline_b = TracePipeline(
         config=config_b, memory_bank=bank,
         embedder=embedder, reranker=reranker,
         api_pool=api_pool, query_rewriter=rewriter,
@@ -136,7 +138,7 @@ async def test_pipeline(
         retrieval_top_k=3, enable_rerank=True, rerank_top_n=2,
         max_retrieval_rounds=1,
     )
-    pipeline_c = RetrievalPipeline(
+    pipeline_c = TracePipeline(
         config=config_c, memory_bank=bank,
         embedder=embedder, reranker=reranker,
         api_pool=api_pool, query_rewriter=None,
@@ -154,7 +156,7 @@ async def test_pipeline(
         retrieval_top_k=3, enable_rerank=False, rerank_top_n=2,
         max_retrieval_rounds=1,
     )
-    pipeline_d = RetrievalPipeline(
+    pipeline_d = TracePipeline(
         config=config_d, memory_bank=bank,
         embedder=embedder, reranker=None,
         api_pool=api_pool, query_rewriter=rewriter,

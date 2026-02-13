@@ -44,31 +44,34 @@ class RetrievalConfig:
     # Master switch
     enable: bool = False
     
-    # Memory bank: points to the training memory dir (bank/ lives inside it)
+    # Retrieval mode: "trace" (task-level) or "state" (state-level MDP)
+    mode: str = "state"
+    
+    # Memory bank: points to the training memory dir (trace_bank/ or state_bank/ lives inside it)
     bank_memory_dir: str = ""
     
-    # Query Rewriter
-    enable_query_rewrite: bool = True
-    max_sub_queries: int = 5
-    
-    # Embedding Retrieval (vLLM deployed)
+    # Embedding Retrieval (vLLM deployed, shared by both modes)
     embedding_model: str = ""
     embedding_base_url: str = ""
     embedding_api_key: str = ""
     retrieval_top_k: int = 10
     
-    # Rerank (vLLM deployed)
+    # Search quality filter (shared)
+    min_score: float = 0.1                      # cosine similarity threshold
+    
+    # === Trace mode settings ===
     enable_rerank: bool = True
     rerank_model: str = ""
     rerank_base_url: str = ""
     rerank_api_key: str = ""
     rerank_top_n: int = 3
-    
-    # Search quality filter
-    min_score: float = 0.1                      # cosine similarity threshold
-    
-    # Multi-round Deep Research
+    enable_query_rewrite: bool = True
+    max_sub_queries: int = 5
     max_retrieval_rounds: int = 1               # 1=single, 2+=multi-round
+    
+    # === State mode settings ===
+    min_q_value: int = 5                        # Q-value filter threshold
+    experience_top_n: int = 1                   # number of experiences to inject per step
 
 
 @dataclass

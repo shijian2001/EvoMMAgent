@@ -8,8 +8,12 @@ Covers:
   - MemoryBank 缺失时的错误处理
 
 Usage:
-    python unit_test/test_local.py
+    python unit_test/trace_level/test_local.py
 """
+
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 from helpers import (
@@ -133,10 +137,10 @@ def test_deduplicate():
     """验证 _deduplicate 保留最高 retrieval_score 的候选。"""
     section("5. Pipeline._deduplicate")
 
-    from mm_memory.retrieval.pipeline import RetrievalPipeline
+    from mm_memory.retrieval.trace_pipeline import TracePipeline
 
     # 用 None 占位，只测 _deduplicate 纯函数
-    pipeline = RetrievalPipeline(
+    pipeline = TracePipeline(
         config=RetrievalConfig(), memory_bank=None,
         embedder=None, reranker=None, api_pool=None,
     )
@@ -160,9 +164,9 @@ def test_format_candidates():
     """验证 _format_candidates 格式：think/answer 内容、[tool]、skip observation。"""
     section("6. Pipeline._format_candidates")
 
-    from mm_memory.retrieval.pipeline import RetrievalPipeline
+    from mm_memory.retrieval.trace_pipeline import TracePipeline
 
-    pipeline = RetrievalPipeline(
+    pipeline = TracePipeline(
         config=RetrievalConfig(), memory_bank=None,
         embedder=None, reranker=None, api_pool=None,
     )

@@ -1,5 +1,6 @@
-"""Retrieval pipeline for experience-augmented multimodal agents."""
+"""Retrieval pipelines for experience-augmented multimodal agents."""
 
-from .pipeline import RetrievalPipeline
+from .trace_pipeline import TracePipeline
+from .state_pipeline import StatePipeline
 
-__all__ = ["RetrievalPipeline"]
+__all__ = ["TracePipeline", "StatePipeline"]

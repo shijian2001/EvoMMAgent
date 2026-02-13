@@ -3,7 +3,7 @@
 
 Scans {memory_dir}/tasks/*/trace.json, filters correct traces,
 optionally generates image captions via a VLM, computes embeddings,
-and saves the bank to {memory_dir}/bank/.
+and saves the bank to {memory_dir}/trace_bank/.
 
 Usage:
     # Without captions (text-only index)

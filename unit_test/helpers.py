@@ -20,9 +20,9 @@ FAKE_TRACES = [
         "sub_task": "color_recognition",
         "trace": [
             {"type": "think", "content": "I need to find the largest car first."},
-            {"type": "action", "tool": "localize_objects", "args": {"query": "car"}},
-            {"type": "observation", "content": "Found 3 cars."},
-            {"type": "think", "content": "The largest bounding box is the red car."},
+            {"type": "action", "tool": "localize_objects", "properties": {"query": "car"},
+             "observation": "Found 3 cars."},
+            {"type": "answer", "content": "Red"},
         ],
         "answer": "Red",
         "is_correct": True,
@@ -33,8 +33,9 @@ FAKE_TRACES = [
         "sub_task": "counting",
         "trace": [
             {"type": "think", "content": "I will detect all people."},
-            {"type": "action", "tool": "localize_objects", "args": {"query": "person"}},
-            {"type": "observation", "content": "Found 5 persons."},
+            {"type": "action", "tool": "localize_objects", "properties": {"query": "person"},
+             "observation": "Found 5 persons."},
+            {"type": "answer", "content": "5"},
         ],
         "answer": "5",
         "is_correct": True,
@@ -45,10 +46,11 @@ FAKE_TRACES = [
         "sub_task": "depth_estimation",
         "trace": [
             {"type": "think", "content": "I need depth estimation."},
-            {"type": "action", "tool": "estimate_object_depth", "args": {"query": "dog"}},
-            {"type": "observation", "content": "depth=0.3"},
-            {"type": "action", "tool": "estimate_object_depth", "args": {"query": "cat"}},
-            {"type": "observation", "content": "depth=0.7"},
+            {"type": "action", "tool": "estimate_object_depth", "properties": {"query": "dog"},
+             "observation": "depth=0.3"},
+            {"type": "action", "tool": "estimate_object_depth", "properties": {"query": "cat"},
+             "observation": "depth=0.7"},
+            {"type": "answer", "content": "The dog"},
         ],
         "answer": "The dog",
         "is_correct": True,
@@ -58,8 +60,9 @@ FAKE_TRACES = [
         "input": {"question": "Is the text in the image written in English?"},
         "sub_task": "ocr",
         "trace": [
-            {"type": "action", "tool": "ocr", "args": {}},
-            {"type": "observation", "content": "Detected: Hello World"},
+            {"type": "action", "tool": "ocr", "properties": {},
+             "observation": "Detected: Hello World"},
+            {"type": "answer", "content": "Yes"},
         ],
         "answer": "Yes",
         "is_correct": False,  # filtered when filter_correct=True
@@ -74,14 +77,15 @@ FAKE_TRACES = [
         "sub_task": "IQ Test",
         "trace": [
             {"type": "think", "content": "Let me examine each shape."},
-            {"type": "action", "tool": "localize_objects", "args": {"query": "shapes"}},
-            {"type": "observation", "content": "Found 8 shapes."},
-            {"type": "action", "tool": "zoom_in", "args": {"bbox": [0, 0, 0.1, 0.5]}},
-            {"type": "observation", "content": "Star shape."},
-            {"type": "action", "tool": "zoom_in", "args": {"bbox": [0.1, 0, 0.2, 0.5]}},
-            {"type": "observation", "content": "Bowtie shape."},
-            {"type": "action", "tool": "zoom_in", "args": {"bbox": [0.2, 0, 0.3, 0.5]}},
-            {"type": "observation", "content": "Complex shape."},
+            {"type": "action", "tool": "localize_objects", "properties": {"query": "shapes"},
+             "observation": "Found 8 shapes."},
+            {"type": "action", "tool": "zoom_in", "properties": {"bbox": [0, 0, 0.1, 0.5]},
+             "observation": "Star shape."},
+            {"type": "action", "tool": "zoom_in", "properties": {"bbox": [0.1, 0, 0.2, 0.5]},
+             "observation": "Bowtie shape."},
+            {"type": "action", "tool": "zoom_in", "properties": {"bbox": [0.2, 0, 0.3, 0.5]},
+             "observation": "Complex shape."},
+            {"type": "answer", "content": "The pattern shows decreasing geometric regularity.\nOption A continues the organic progression.\nAnswer: A"},
         ],
         "answer": (
             "The pattern shows decreasing geometric regularity.\n"
@@ -109,12 +113,12 @@ def create_fake_memory_dir() -> str:
 
 
 def create_synthetic_bank(memory_dir: str, dim: int = 8):
-    """Write random embeddings + task_ids + captions to {memory_dir}/bank/."""
+    """Write random embeddings + task_ids + captions to {memory_dir}/trace_bank/."""
     task_ids = [t["task_id"] for t in CORRECT_TRACES]
     embeddings = np.random.randn(len(task_ids), dim).astype(np.float32)
     captions = [""] * len(task_ids)
 
-    bank_dir = os.path.join(memory_dir, "bank")
+    bank_dir = os.path.join(memory_dir, "trace_bank")
     os.makedirs(bank_dir, exist_ok=True)
     np.save(os.path.join(bank_dir, "embeddings.npy"), embeddings)
     with open(os.path.join(bank_dir, "task_ids.json"), "w") as f:

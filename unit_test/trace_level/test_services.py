@@ -8,7 +8,7 @@ Covers:
   - Reranker.rerank（调用 /v1/rerank）
 
 Usage:
-    python unit_test/test_services.py \
+    python unit_test/trace_level/test_services.py \
         --embedding_model Qwen/Qwen3-VL-Embedding-2B \
         --embedding_base_url http://localhost:8001/v1 \
         --rerank_model Qwen/Qwen3-VL-Reranker-2B \
@@ -20,6 +20,8 @@ import asyncio
 import json
 import os
 import shutil
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from helpers import (
     FAKE_TRACES, create_fake_memory_dir, cleanup, ok, section,
@@ -55,7 +57,7 @@ async def test_memory_bank_build(memory_dir: str, embedder: Embedder):
     """验证 MemoryBank.build 离线构建：扫描 → 过滤 → 编码 → 写文件（含 captions.json）。"""
     section("2. MemoryBank.build (offline)")
 
-    bank_dir = os.path.join(memory_dir, "bank")
+    bank_dir = os.path.join(memory_dir, "trace_bank")
     if os.path.exists(bank_dir):
         shutil.rmtree(bank_dir)
 

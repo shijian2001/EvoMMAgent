@@ -1,6 +1,6 @@
 """Memory bank: a thin search index over existing memory traces.
 
-The bank lives at ``{memory_dir}/bank/`` and contains:
+The bank lives at ``{memory_dir}/trace_bank/`` and contains:
 - ``embeddings.npy``: [N, D] float32 vectors
 - ``task_ids.json``: ordered list of task IDs matching embedding rows
 - ``captions.json``: ordered list of image captions (empty string if no images)
@@ -31,16 +31,16 @@ class MemoryBank:
     """Search index over existing memory traces."""
 
     def __init__(self, memory_dir: str):
-        """Load a pre-built bank from ``{memory_dir}/bank/``.
+        """Load a pre-built bank from ``{memory_dir}/trace_bank/``.
 
         Args:
-            memory_dir: Root memory directory containing ``tasks/`` and ``bank/``
+            memory_dir: Root memory directory containing ``tasks/`` and ``trace_bank/``
 
         Raises:
             FileNotFoundError: If bank files do not exist
         """
         self.memory_dir = memory_dir
-        bank_dir = os.path.join(memory_dir, "bank")
+        bank_dir = os.path.join(memory_dir, "trace_bank")
 
         task_ids_path = os.path.join(bank_dir, "task_ids.json")
         embeddings_path = os.path.join(bank_dir, "embeddings.npy")
@@ -62,7 +62,7 @@ class MemoryBank:
                 f"({self.embeddings.shape[0]}) count mismatch"
             )
 
-        # Load captions (optional — backward compatible with old banks)
+        # Load captions (optional — backward compatible with older banks)
         captions_path = os.path.join(bank_dir, "captions.json")
         if os.path.exists(captions_path):
             with open(captions_path, "r", encoding="utf-8") as f:
@@ -259,7 +259,7 @@ class MemoryBank:
 
         Scans ``{memory_dir}/tasks/*/trace.json``, filters, optionally
         generates image captions via *api_pool*, computes embeddings,
-        and saves the bank to ``{memory_dir}/bank/``.
+        and saves the bank to ``{memory_dir}/trace_bank/``.
 
         Args:
             memory_dir: Root memory directory
@@ -353,13 +353,13 @@ class MemoryBank:
                 f"(filter_correct={filter_correct})"
             )
 
-        logger.info(f"Building memory bank from {len(task_ids)} traces ...")
+        logger.info(f"Building trace bank from {len(task_ids)} traces ...")
 
         # Embed
         embeddings = await embedder.encode_batch(texts, batch_size=batch_size)
 
         # Save
-        bank_dir = os.path.join(memory_dir, "bank")
+        bank_dir = os.path.join(memory_dir, "trace_bank")
         os.makedirs(bank_dir, exist_ok=True)
 
         np.save(os.path.join(bank_dir, "embeddings.npy"), embeddings)
@@ -369,7 +369,7 @@ class MemoryBank:
             json.dump(captions, f, ensure_ascii=False)
 
         logger.info(
-            f"Memory bank saved to {bank_dir}: "
+            f"Trace bank saved to {bank_dir}: "
             f"{len(task_ids)} entries, dim={embeddings.shape[1]}"
         )
 
