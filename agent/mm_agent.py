@@ -477,6 +477,9 @@ class MultimodalAgent(BasicAgent):
         _EXPERIENCE_TAG = "[Experience from similar reasoning states]"
         
         for iteration in range(self.max_iterations):
+            # Track retrieved experience for this iteration (logged with action/answer)
+            current_experience: Optional[str] = None
+            
             # State-level retrieval: retrieve experience for current state
             if self.retrieval_pipeline and self.config.retrieval.mode == "state":
                 # Remove previous experience message (if any)
@@ -493,6 +496,7 @@ class MultimodalAgent(BasicAgent):
                 try:
                     exp = await self.retrieval_pipeline.retrieve(state_text)
                     if exp:
+                        current_experience = exp
                         conversation_history.append({
                             "role": "user",
                             "content": f"{_EXPERIENCE_TAG}\n{exp}",
@@ -636,7 +640,8 @@ class MultimodalAgent(BasicAgent):
                         memory.log_action(
                             tool=tool_name,
                             properties=original_properties or (json.loads(tool_args) if isinstance(tool_args, str) else tool_args),
-                            observation=observation_text
+                            observation=observation_text,
+                            experience=current_experience,
                         )
                     
                     # Record history
@@ -724,7 +729,8 @@ class MultimodalAgent(BasicAgent):
                                 observation=observation_data or {},
                                 output_object=output_object,
                                 output_type=output_type,
-                                description=description
+                                description=description,
+                                experience=current_experience,
                             )
                             
                             # Format observation text for LLM (with ID reference)
@@ -808,7 +814,8 @@ class MultimodalAgent(BasicAgent):
                         memory.log_action(
                             tool=tool_name,
                             properties=properties,
-                            observation=observation
+                            observation=observation,
+                            experience=current_experience,
                         )
                     except Exception as e:
                         if verbose:
@@ -857,7 +864,7 @@ class MultimodalAgent(BasicAgent):
                 final_answer = response.get("answer", "")
                 
                 if memory:
-                    memory.log_answer(final_answer)
+                    memory.log_answer(final_answer, experience=current_experience)
                     memory.end_task(success=True)
                     if verbose:
                         logger.info(f"💾 Saved trace to: {memory.task_dir}/trace.json")

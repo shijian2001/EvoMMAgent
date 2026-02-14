@@ -165,7 +165,8 @@ class Memory:
         observation: Union[str, Dict[str, Any]],
         output_object: Optional[Any] = None,
         output_type: str = "img",
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        experience: Optional[str] = None,
     ) -> Optional[str]:
         """Log an action step.
         
@@ -176,6 +177,7 @@ class Memory:
             output_object: Optional multimodal object (PIL.Image, video path, etc.)
             output_type: Type of output (img, vid)
             description: Optional pre-generated description for multimodal output
+            experience: Optional retrieved experience that guided this action
             
         Returns:
             output_id: Reference ID of output if created, else None
@@ -212,13 +214,16 @@ class Memory:
             observation = observation_dict
         
         # Append to trace
-        self.trace_data["trace"].append({
+        entry = {
             "step": step,
             "type": "action",
             "tool": tool,
             "properties": properties,
-            "observation": observation
-        })
+            "observation": observation,
+        }
+        if experience:
+            entry["experience"] = experience
+        self.trace_data["trace"].append(entry)
         
         return output_id
     
@@ -275,18 +280,22 @@ class Memory:
             import logging
             logging.error(f"Failed to save output object {output_id}: {e}")
     
-    def log_answer(self, content: str):
+    def log_answer(self, content: str, experience: Optional[str] = None):
         """Log final answer.
         
         Args:
             content: Answer content
+            experience: Optional retrieved experience that guided this answer
         """
         step = len(self.trace_data["trace"]) + 1
-        self.trace_data["trace"].append({
+        entry = {
             "step": step,
             "type": "answer",
-            "content": content
-        })
+            "content": content,
+        }
+        if experience:
+            entry["experience"] = experience
+        self.trace_data["trace"].append(entry)
         self.trace_data["answer"] = content
     
     def end_task(self, success: bool = True, is_correct: bool = None):
