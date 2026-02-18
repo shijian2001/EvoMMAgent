@@ -654,6 +654,8 @@ class MultimodalAgent(BasicAgent):
                     
                     continue  # Skip normal processing for get_images
                 
+                traj_observation = None  # clean observation for state-level trajectory
+                
                 if isinstance(tool_result, dict):
                     output_image = tool_result.get("output_image")
                     output_video = tool_result.get("output_video")
@@ -756,6 +758,7 @@ class MultimodalAgent(BasicAgent):
                             # Note: videos not yet supported
                             
                             observation = observation_text
+                            traj_observation = description
                         except Exception as e:
                             if verbose:
                                 logger.warning(f"Failed to log action to memory: {e}")
@@ -855,7 +858,7 @@ class MultimodalAgent(BasicAgent):
                         "thinking": assistant_content or "",
                         "tool": tool_name,
                         "parameters": original_properties or {},
-                        "observation": observation or "",
+                        "observation": traj_observation if traj_observation is not None else (observation or ""),
                     }
                 })
                 
