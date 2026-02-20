@@ -148,7 +148,10 @@ def build_hindsight_prompt(
     type_line = f"\nType: {sub_task}" if sub_task else ""
 
     prompt = f"""\
-You are evaluating a complete agent reasoning trace that solved a task CORRECTLY.
+You are evaluating a complete agent reasoning trace. The task was solved CORRECTLY.
+The process may be highly efficient, or it may contain wasteful, redundant, or
+error-prone steps. Judge each step on its efficiency, necessity, and actual
+contribution to the correct outcome.
 
 ## Task
 {images_note}Question: {question}{type_line}
@@ -162,9 +165,12 @@ is what the agent has seen so far, including all previous actions and observatio
 ## Instructions
 For each (state, action) pair, provide:
 
-1. q_value (0-10): How good was this action at this state?
-   This trace is CORRECT, so even low-scored steps contributed to eventual success.
-   Score the EFFICIENCY and NECESSITY of each step.
+1. q_value (0-10): Rate the quality of this action at this state.
+   Success does NOT mean every step was good — correct traces often contain
+   unnecessary detours, tool errors, or steps that contributed nothing to
+   the final answer.
+   Score based on: Was this step necessary? Did it produce useful information?
+   Could the task have been solved without it or with a better approach?
    - 9-10: Essential — critical step that couldn't be done better
            (e.g., the right tool with good parameters, or answering at the right time)
    - 7-8: Helpful — clear progress, though a slightly better approach existed
@@ -173,8 +179,8 @@ For each (state, action) pair, provide:
            (e.g., an extra verification step that wasn't strictly necessary)
    - 3-4: Wasteful — could have been skipped without affecting the outcome
            (e.g., repeated tool call with similar parameters, unnecessary exploration)
-   - 0-2: Harmful — actively delayed the solution or produced misleading information
-           (e.g., wrong tool entirely, though the agent recovered later)
+   - 0-2: Harmful — error, repeated failure, or produced misleading information
+           (e.g., tool returned error, same failed call repeated, wrong tool entirely)
 
 2. experience (1-2 sentences): Actionable advice that a FUTURE agent would see
    BEFORE making this decision. This advice will be injected into the agent's
@@ -184,12 +190,17 @@ For each (state, action) pair, provide:
      available tools, and observations so far, but keep it generalizable
    - Focus on STRATEGY: which tool to use and why, when to answer directly
      without further tool calls, or when tools are unnecessary
-   - Include what to AVOID if the step was suboptimal
+   - Consider whether the task could be answered through direct visual
+     analysis without any tool calls — if so, advise answering directly
+   - If the step was an error, redundant, or unnecessary, the experience
+     MUST be cautionary — warn against this approach rather than endorsing it
    - NEVER mention or hint at the correct answer
    Good: "For visual similarity tasks, use get_image2images_similarity to get
           objective scores rather than estimating visually."
    Good: "The observation already contains enough information to answer directly.
           No further tool calls are needed."
+   Good: "Avoid calling additional tools — the current observations already
+          provide sufficient evidence to answer directly."
    Bad:  "The agent should use the right tool." (too vague)
    Bad:  "The answer is likely A based on the scores." (leaks answer)
 

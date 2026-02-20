@@ -55,7 +55,7 @@ class StatePipeline:
         for c in candidates[: self.config.experience_top_n]:
             exp = c.get("experience", "")
             if exp:
-                experiences.append(f"- {exp}")
+                experiences.append(exp)
 
         return "\n".join(experiences)
 
