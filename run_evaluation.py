@@ -10,17 +10,17 @@ async def main():
     # ============================================================
     # Example 1: Direct Query (no tools, no memory)
     # ============================================================
-    agent_config = {
-        "tool_bank": None,  # No tools
-        "model_name": "qwen3-vl-32b-instruct", # qwen2.5-vl-72b-instruct, qwen-2.5-vl-72b-instruct, qwen3-vl-235b-a22b-instruct, qwen3-vl-8b-instruct, qwen3-vl-32b-instruct
-        "max_tokens": 40000,
-        "temperature": 0.7,
-        "enable_memory": False,  # No memory
-        "max_iterations": 20,
-        "max_retries": 20,
-        "base_url": "https://maas.devops.xiaohongshu.com/v1",
-        "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
-    }
+    # agent_config = {
+    #     "tool_bank": None,  # No tools
+    #     "model_name": "qwen3-vl-32b-instruct", # qwen2.5-vl-72b-instruct, qwen-2.5-vl-72b-instruct, qwen3-vl-235b-a22b-instruct, qwen3-vl-8b-instruct, qwen3-vl-32b-instruct
+    #     "max_tokens": 40000,
+    #     "temperature": 0.7,
+    #     "enable_memory": False,  # No memory
+    #     "max_iterations": 20,
+    #     "max_retries": 20,
+    #     "base_url": "https://maas.devops.xiaohongshu.com/v1",
+    #     "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
+    # }
     
     # ============================================================
     # Example 2: MMAgent with Tools (ReAct pattern)
@@ -99,44 +99,44 @@ async def main():
     # ============================================================
     # Example 4: MMAgent with Tools + State-Level Retrieval (MDP)
     # ============================================================
-    # agent_config = {
-    #     "tool_bank": [
-    #         "localize_objects", "zoom_in", "calculator", "crop",
-    #         "visualize_regions", "estimate_region_depth",
-    #         "estimate_object_depth", "get_image2images_similarity",
-    #         "get_image2texts_similarity", "get_text2images_similarity",
-    #     ],
-    #     "model_name": "qwen3-vl-32b-instruct",
-    #     "max_tokens": 40000,
-    #     "temperature": 0.7,
-    #     "enable_memory": False,
-    #     "max_iterations": 20,
-    #     "max_retries": 20,
-    #     "mm_agent_template_en_file": "exp_prompt/more_tool_call/en.jinja2",
-    #     "mm_agent_template_zh_file": "exp_prompt/more_tool_call/zh.jinja2",
-    #     "base_url": "https://maas.devops.xiaohongshu.com/v1",
-    #     "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
-    #     # State-level retrieval: per-step experience from hindsight-annotated states
-    #     # No rerank — cosine similarity only. experience_top_n controls how many to inject.
-    #     "retrieval": {
-    #         "enable": True,
-    #         "mode": "state",
-    #         "bank_memory_dir": "...",  # dir with tasks/ and state_bank/
-    #         "embedding_model": "qwen3vl-embed",
-    #         "embedding_base_url": "http://localhost:8001/v1",
-    #         "retrieval_top_k": 10,
-    #         "min_score": 0.01,
-    #         "min_q_value": 7,
-    #         "experience_top_n": 1,
-    #     },
-    # }
+    agent_config = {
+        "tool_bank": [
+            "localize_objects", "zoom_in", "calculator", "crop",
+            "visualize_regions", "estimate_region_depth",
+            "estimate_object_depth", "get_image2images_similarity",
+            "get_image2texts_similarity", "get_text2images_similarity",
+        ],
+        "model_name": "qwen3-vl-32b-instruct",
+        "max_tokens": 40000,
+        "temperature": 0.7,
+        "enable_memory": False,
+        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260219/retrieve_exp/meta_test/blink/qwen3vl_32b/w_retrieve",
+        "max_iterations": 20,
+        "max_retries": 20,
+        "mm_agent_template_en_file": "exp_prompt/more_tool_call/en.jinja2",
+        "mm_agent_template_zh_file": "exp_prompt/more_tool_call/zh.jinja2",
+        "base_url": "https://maas.devops.xiaohongshu.com/v1",
+        "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
+        # State-level retrieval: per-step experience from hindsight-annotated states
+        "retrieval": {
+            "enable": True,
+            "mode": "state",
+            "bank_memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260210/retrieve_exp/meta_train/blink/qwen3vl_32b/w_tool",
+            "embedding_model": "qwen3vl-embed",
+            "embedding_base_url": "http://localhost:8001/v1",
+            "retrieval_top_k": 10,
+            "min_score": 0.1,
+            "min_q_value": 7,
+            "experience_top_n": 1,
+        },
+    }
     
     # Runner configuration
     runner = Runner(
-        jsonl_path="data/eval/image/BLINK/blink_data_meta_train.jsonl",
+        jsonl_path="data/eval/image/BLINK/blink_data_meta_test.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/20260210/retrieve_exp/meta_train/blink/qwen3vl_32b/direct",
+        output_dir="eval_results/20260219/retrieve_exp/meta_test/blink/qwen3vl_32b/w_retrieve",
         batch_size=100,
         max_concurrent=10,
         verbose=True
