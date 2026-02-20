@@ -102,10 +102,10 @@ def test_config_mode_defaults():
 
     rc = RetrievalConfig()
     assert rc.mode == "state", f"Expected mode='state', got '{rc.mode}'"
-    assert rc.min_q_value == 5, f"Expected min_q_value=5, got {rc.min_q_value}"
+    assert rc.min_q_value == 7, f"Expected min_q_value=7, got {rc.min_q_value}"
     assert rc.experience_top_n == 1, f"Expected experience_top_n=1, got {rc.experience_top_n}"
     assert rc.enable is False, "retrieval should be disabled by default"
-    ok("RetrievalConfig: mode='state', min_q_value=5, experience_top_n=1, enable=False")
+    ok("RetrievalConfig: mode='state', min_q_value=7, experience_top_n=1, enable=False")
 
     cfg = Config()
     assert cfg.retrieval.mode == "state"

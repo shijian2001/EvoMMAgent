@@ -70,7 +70,7 @@ class RetrievalConfig:
     max_retrieval_rounds: int = 1               # 1=single, 2+=multi-round
     
     # === State mode settings ===
-    min_q_value: int = 5                        # Q-value filter threshold
+    min_q_value: int = 7                        # Q-value filter threshold
     experience_top_n: int = 1                   # number of experiences to inject per step
 
 

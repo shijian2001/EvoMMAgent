@@ -126,7 +126,7 @@ async def main():
     #         "embedding_base_url": "http://localhost:8001/v1",
     #         "retrieval_top_k": 10,
     #         "min_score": 0.01,
-    #         "min_q_value": 5,
+    #         "min_q_value": 7,
     #         "experience_top_n": 1,
     #     },
     # }

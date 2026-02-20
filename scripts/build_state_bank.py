@@ -171,15 +171,15 @@ For each (state, action) pair, provide:
    the final answer.
    Score based on: Was this step necessary? Did it produce useful information?
    Could the task have been solved without it or with a better approach?
-   - 9-10: Essential — critical step that couldn't be done better
+   - 9-10: Essential — the best possible action at this state
            (e.g., the right tool with good parameters, or answering at the right time)
-   - 7-8: Helpful — clear progress, though a slightly better approach existed
+   - 7-8: Helpful — correct direction with clear progress, minor room for improvement
            (e.g., correct tool but suboptimal parameters)
-   - 5-6: Acceptable — contributes but was somewhat redundant or inefficient
-           (e.g., an extra verification step that wasn't strictly necessary)
-   - 3-4: Wasteful — could have been skipped without affecting the outcome
+   - 5-6: Reasonable — a valid approach but not the most efficient path;
+           a better tool choice or skipping this step would have been preferable
+   - 3-4: Wasteful — added no useful information, could have been skipped entirely
            (e.g., repeated tool call with similar parameters, unnecessary exploration)
-   - 0-2: Harmful — error, repeated failure, or produced misleading information
+   - 0-2: Harmful — produced errors, misleading information, or repeated a known failure
            (e.g., tool returned error, same failed call repeated, wrong tool entirely)
 
 2. experience (1-2 sentences): Actionable advice that a FUTURE agent would see
@@ -417,8 +417,8 @@ async def main():
         help="API key for the embedding service (default: dummy)",
     )
     parser.add_argument(
-        "--min_q", type=int, default=5,
-        help="Minimum Q-value to include a state (default: 5)",
+        "--min_q", type=int, default=7,
+        help="Minimum Q-value to include a state (default: 7)",
     )
     parser.add_argument(
         "--batch_size", type=int, default=32,
