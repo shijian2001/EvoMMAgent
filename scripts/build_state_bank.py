@@ -150,8 +150,7 @@ def build_hindsight_prompt(
     prompt = f"""\
 You are evaluating a complete agent reasoning trace. The task was solved CORRECTLY.
 The process may be highly efficient, or it may contain wasteful, redundant, or
-error-prone steps. Judge each step on its efficiency, necessity, and actual
-contribution to the correct outcome.
+error-prone steps. Judge each step by the quality and relevance of its output.
 
 ## Task
 {images_note}Question: {question}{type_line}
@@ -166,21 +165,19 @@ is what the agent has seen so far, including all previous actions and observatio
 For each (state, action) pair, provide:
 
 1. q_value (0-10): Rate the quality of this action at this state.
-   Success does NOT mean every step was good — correct traces often contain
-   unnecessary detours, tool errors, or steps that contributed nothing to
-   the final answer.
-   Score based on: Was this step necessary? Did it produce useful information?
-   Could the task have been solved without it or with a better approach?
-   - 9-10: Essential — the best possible action at this state
-           (e.g., the right tool with good parameters, or answering at the right time)
-   - 7-8: Helpful — correct direction with clear progress, minor room for improvement
-           (e.g., correct tool but suboptimal parameters)
-   - 5-6: Reasonable — a valid approach but not the most efficient path;
-           a better tool choice or skipping this step would have been preferable
-   - 3-4: Wasteful — added no useful information, could have been skipped entirely
-           (e.g., repeated tool call with similar parameters, unnecessary exploration)
-   - 0-2: Harmful — produced errors, misleading information, or repeated a known failure
-           (e.g., tool returned error, same failed call repeated, wrong tool entirely)
+   A correct final answer does NOT mean every step was good. Judge each step
+   by whether it produced accurate, relevant information that actually
+   contributed to reaching the answer.
+   - 9-10: Essential — produced decisive information that directly shaped
+           the answer, or answered correctly at the right time
+   - 7-8: Helpful — useful output that advanced the solution, with minor
+           room for improvement in tool choice or parameters
+   - 5-6: Reasonable — valid approach, but the output had little actual
+           influence on the final answer; a more direct path existed
+   - 3-4: Wasteful — produced no new information, duplicated prior knowledge,
+           or was an unnecessary detour
+   - 0-2: Harmful — produced errors, misleading output, or repeated a
+           known failure
 
 2. experience (1-2 sentences): Actionable advice that a FUTURE agent would see
    BEFORE making this decision. This advice will be injected into the agent's
@@ -188,10 +185,8 @@ For each (state, action) pair, provide:
    Guidelines:
    - Ground the advice in the current context: reference the task type,
      available tools, and observations so far, but keep it generalizable
-   - Focus on STRATEGY: which tool to use and why, when to answer directly
-     without further tool calls, or when tools are unnecessary
-   - Consider whether the task could be answered through direct visual
-     analysis without any tool calls — if so, advise answering directly
+   - Focus on STRATEGY: recommend the specific tool and approach that works
+     for this task type, or advise answering directly if tools are unnecessary
    - If the step was an error, redundant, or unnecessary, the experience
      MUST be cautionary — warn against this approach rather than endorsing it
    - NEVER mention or hint at the correct answer
