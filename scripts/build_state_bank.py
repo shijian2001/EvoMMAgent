@@ -183,8 +183,9 @@ For each (state, action) pair, provide:
    BEFORE making this decision. This advice will be injected into the agent's
    context at runtime to guide its next action.
    Guidelines:
-   - Ground the advice in the current context: reference the task type,
-     available tools, and observations so far, but keep it generalizable
+   - Reference the task type and tool strategy, but keep the advice
+     generalizable — do not mention specific objects, labels, or values
+     from this particular trace
    - Focus on STRATEGY: recommend the specific tool and approach that works
      for this task type, or advise answering directly if tools are unnecessary
    - If the step was an error, redundant, or unnecessary, the experience
