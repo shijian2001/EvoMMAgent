@@ -5,15 +5,7 @@ Processing pipeline:
 2. extract_images() - Extract PIL image from sample
 3. convert_sample() - Convert sample to unified format
 4. process_and_save() - Coordinate saving images and JSONL
-
-Dataset: We-Math/We-Math (testmini: 1740 samples, ACL 2025)
-Schema: ID, split, knowledge concept, question, option, answer, image_path, key,
-        question number, knowledge concept description
 """
-
-'''
-python we_math.py /mnt/sda/runhaofu/Datasets/We-Math/ --jsonl_path /mnt/sda/runhaofu/Datasets/test_dataset/we_math.jsonl --image_dir /mnt/sda/runhaofu/Datasets/test_dataset/we_math_images --num_proc 8
-'''
 
 import argparse
 import json
@@ -29,7 +21,6 @@ from tqdm import tqdm
 
 def load_dataset(input_dir: str, split: str = "testmini"):
     """Load We-Math dataset from HuggingFace or local path."""
-    # input_dir: hub name (e.g. We-Math/We-Math) or local path to dataset
     try:
         ds = datasets.load_dataset(input_dir, split=split, trust_remote_code=True)
     except Exception as e:
@@ -42,7 +33,7 @@ def load_dataset(input_dir: str, split: str = "testmini"):
 
 
 def extract_images(example: dict) -> list:
-    """Extract PIL image(s) from We-Math sample (single image in image_path column)."""
+    """Extract PIL image(s) from We-Math sample."""
     img = example.get("image_path")
     if img is None:
         return []
@@ -52,14 +43,12 @@ def extract_images(example: dict) -> list:
 
 
 def _parse_options(option_str: str) -> list:
-    """Parse We-Math option string 'A. 200.96;B. 3215.36;C. 6280;D. 32; E. No correct answer' -> list of choice texts."""
+    """Parse We-Math option string 'A. opt1;B. opt2;...' -> list of choice texts."""
     if not option_str or not isinstance(option_str, str):
         return []
-    # Split by semicolon, strip each part, remove leading "A. ", "B. ", etc. to get clean text
     parts = [p.strip() for p in option_str.split(";") if p.strip()]
     choices = []
     for p in parts:
-        # Match "A. text" or "A. text" (letter + optional dot + space + rest)
         m = re.match(r"^[A-Za-z]\.\s*(.*)$", p)
         if m:
             choices.append(m.group(1).strip())
@@ -78,15 +67,7 @@ def _parse_answer(answer_raw: str, choices: list) -> str:
 
 
 def convert_sample(example: dict, idx: int, image_paths: list[str]) -> dict:
-    """Convert We-Math sample to BLINK-style unified format.
-
-    Constraints (to match BLINK schema):
-    - Field names MUST be a subset of blink_val.jsonl fields.
-      Expected fields: idx, images, dataset, type, sub_task, question,
-      choices, answer, prompt
-    - `sub_task` reuses the We-Math `knowledge concept` text.
-    - `prompt` is exactly the question text (no extra instructions).
-    """
+    """Convert We-Math sample to unified format."""
     option_str = example.get("option", "")
     choices = _parse_options(option_str)
     answer_letter = example.get("answer", "")
@@ -95,13 +76,11 @@ def convert_sample(example: dict, idx: int, image_paths: list[str]) -> dict:
         "images": image_paths,
         "dataset": "We-Math",
         "type": "multi-choice",
-        # Use We-Math knowledge concept as the sub_task category
         "sub_task": example.get("knowledge concept", ""),
         "question": example.get("question", ""),
         "choices": choices,
         "answer": _parse_answer(answer_letter, choices),
-        # Prompt is exactly the question content
-        "prompt":'',
+        "prompt": "",
     }
 
 

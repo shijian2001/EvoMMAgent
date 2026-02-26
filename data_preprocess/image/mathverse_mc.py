@@ -1,9 +1,11 @@
-"""Preprocess MathVerse dataset to BLINK-val-compatible multi-choice JSONL + image folder.
-"""
-'''
-python EvoMMAgent/data_preprocess/image/mathverse_mc.py /mnt/sda/runhaofu/Datasets/MathVerse --jsonl_path /mnt/sda/runhaofu/Datasets/test_dataset/mathverse_mc.jsonl --image_dir /mnt/sda/runhaofu/Datasets/test_dataset/mathverse_mc_images --num_proc 8
-'''
+"""Preprocess MathVerse dataset to JSONL + image folder format, keeping only multi-choice questions.
 
+Processing pipeline:
+1. load_dataset() - Load source dataset (testmini split)
+2. extract_images() - Extract PIL images from sample
+3. convert_sample() - Convert sample to unified format (filters non-MC)
+4. process_and_save() - Coordinate saving images and JSONL
+"""
 
 import argparse
 import json
@@ -32,7 +34,7 @@ _RE_HAS_OPTION_LINES = re.compile(r"(?m)^\s*([A-D])\s*[:\)]\s*.+$")
 
 
 def load_dataset(input_dir: str):
-    """Load MathVerse dataset - testmini split (with images)."""
+    """Load MathVerse dataset - testmini split."""
     try:
         ds = datasets.load_dataset(input_dir, name="testmini", split="testmini")
     except Exception as e:
@@ -45,7 +47,7 @@ def load_dataset(input_dir: str):
 
 
 def extract_images(example: dict) -> list:
-    """Extract PIL image(s) from MathVerse sample (single image per sample)."""
+    """Extract PIL image(s) from MathVerse sample."""
     img = example.get("image")
     if img is None:
         return []
@@ -78,7 +80,7 @@ def _parse_choices_from_question(question: str) -> list[str]:
 
 
 def _parse_answer(answer_raw: str, choices: list[str]) -> str:
-    """Match BLINK behavior: '(A)'/'A' -> choice text; 'hidden' -> ''."""
+    """Parse answer: '(A)'/'A' -> choice text; 'hidden' -> ''."""
     if answer_raw is None:
         return ""
     a = str(answer_raw).strip()
@@ -92,7 +94,7 @@ def _parse_answer(answer_raw: str, choices: list[str]) -> str:
 
 
 def convert_sample(example: dict, idx: int, image_paths: list[str]) -> dict | None:
-    """Convert MathVerse sample to BLINK-val-compatible record; return None if filtered out."""
+    """Convert MathVerse sample to unified format; return None if not multi-choice."""
     if example.get("question_type") != "multi-choice":
         return None
 
@@ -101,26 +103,21 @@ def convert_sample(example: dict, idx: int, image_paths: list[str]) -> dict | No
         metadata = {k: metadata[k] for k in metadata.keys()}
 
     question = example.get("question", "") or ""
-    # 只保留题干非空的选择题（Vision Only 的 question=="" 直接丢弃）
     if not question.strip():
         return None
 
-    # choices 从 question 解析；若 question 为空（Vision Only），允许从 question_for_eval 解析 choices
     choices = _parse_choices_from_question(question)
     if not choices:
         choices = _parse_choices_from_question(example.get("question_for_eval", "") or "")
 
-    # 只保留“真正有选项”的选择题
     if len(choices) < 2:
         return None
 
     answer = _parse_answer(example.get("answer", ""), choices)
     prompt = question if _question_has_options(question) else ""
 
-    sub_task = ""
     sub_like = metadata.get("subfield", "")
-    if sub_like is not None:
-        sub_task = str(sub_like) if str(sub_like).strip() else ""
+    sub_task = str(sub_like).strip() if sub_like is not None and str(sub_like).strip() else ""
 
     record = {
         "idx": idx,
@@ -135,6 +132,8 @@ def convert_sample(example: dict, idx: int, image_paths: list[str]) -> dict | No
     }
     return {k: record.get(k, "") for k in BLINK_FIELDS}
 
+
+# ============ Generic processing functions (reusable across datasets) ============
 
 def save_images(images: list, idx: int, image_dir: Path) -> list[str]:
     """Save images to {idx:05d}/{img_idx:05d}.png and return relative paths."""
@@ -152,7 +151,7 @@ def save_images(images: list, idx: int, image_dir: Path) -> list[str]:
 
 
 def process_one_sample(args):
-    """Process one sample: extract images, save them, return record (or None if filtered)."""
+    """Process one sample: extract images, save them, return record."""
     example, idx, image_dir = args
     images = extract_images(example)
     image_paths = save_images(images, idx, image_dir)
@@ -176,7 +175,6 @@ def process_and_save(dataset, jsonl_path: Path, image_dir: Path, num_proc: int =
             )
         )
 
-    # filter Nones
     records = [r for r in records if r is not None]
 
     print("📝 Writing JSONL...")
@@ -188,9 +186,11 @@ def process_and_save(dataset, jsonl_path: Path, image_dir: Path, num_proc: int =
     print(f"✅ Saved images to {image_dir}")
 
 
+# ============ Main entry ============
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Preprocess MathVerse (testmini) to BLINK-val-compatible multi-choice JSONL + image folder"
+        description="Preprocess MathVerse (testmini) to multi-choice JSONL + image folder"
     )
     parser.add_argument(
         "input_dir",
@@ -217,4 +217,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

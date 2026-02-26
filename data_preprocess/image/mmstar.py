@@ -7,14 +7,11 @@ Processing pipeline:
 4. process_and_save() - Coordinate saving images and JSONL
 """
 
-'''
-python EvoMMAgent/data_preprocess/image/mmstar.py Datasets/MMStar/MMStar.tsv --jsonl_path Datasets/test_dataset/mmstar_val.jsonl --image_dir Datasets/test_dataset/MMStar_images
-'''
-
 import argparse
 import base64
 import io
 import json
+import re
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -26,15 +23,7 @@ from tqdm import tqdm
 # ============ Dataset-specific functions (customize per dataset) ============
 
 def load_dataset(input_dir_or_tsv: str, tsv_filename: str = "MMStar.tsv"):
-    """Load MMStar dataset from a directory (preferred) or a local TSV file.
-
-    The TSV is expected to have at least the following columns:
-    - index
-    - question
-    - answer (letter like 'A', 'B', ...)
-    - category
-    - image (base64-encoded jpeg/png)
-    """
+    """Load MMStar dataset from a directory or a local TSV file."""
     p = Path(input_dir_or_tsv)
     input_path = (p / tsv_filename) if p.is_dir() else p
     print(f"📂 Loading MMStar TSV from {input_path}")
@@ -58,24 +47,17 @@ def extract_images(example: dict) -> list:
         img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         return [img]
     except Exception as e:
-        # If decoding fails, skip this sample's image
         print(f"⚠️ Failed to decode image for index {example.get('index')}: {e}")
         return []
 
 
 def _parse_choices_from_question(question: str) -> list[str]:
-    """Parse multiple-choice options from the question text.
-
-    MMStar questions contain an 'Options:' segment, e.g.:
-    '...\\nOptions: A: option A text, B: option B text, C: ..., D: ...'
-    """
+    """Parse 'Options: A: ..., B: ...' segment from question text."""
     if not question:
         return []
 
-    # Locate the 'Options:' part (may be on a new line)
-    lower = question
     marker = "Options:"
-    idx = lower.find(marker)
+    idx = question.find(marker)
     if idx == -1:
         return []
 
@@ -83,18 +65,12 @@ def _parse_choices_from_question(question: str) -> list[str]:
     if not options_str:
         return []
 
-    # Split by option letters like 'A:', 'B:', ...
-    import re
-
     parts = re.split(r"\s*[A-Z]:\s*", options_str)
-    # First part is text before 'A:', discard it
     raw_choices = parts[1:] if len(parts) > 1 else []
 
     choices = []
     for c in raw_choices:
-        # Remove trailing separators like ',', '.', ';'
         c = c.strip()
-        # Cut off anything after a pattern like ', X: ' for safety
         c = re.split(r",\s*[A-Z]:\s*", c)[0].strip()
         c = c.rstrip(".,;").strip()
         if c:
@@ -117,7 +93,7 @@ def _parse_answer(answer_raw: str, choices: list) -> str:
 
 
 def convert_sample(example: dict, idx: int, image_paths: list[str]) -> dict:
-    """Convert MMStar sample to unified format compatible with BLINK JSONL."""
+    """Convert MMStar sample to unified format."""
     question = example.get("question", "")
     choices = _parse_choices_from_question(question)
     answer_text = _parse_answer(example.get("answer", ""), choices)
@@ -127,12 +103,10 @@ def convert_sample(example: dict, idx: int, image_paths: list[str]) -> dict:
         "images": image_paths,
         "dataset": "MMStar",
         "type": "multi-choice",
-        # sub_task uses 'category' field from MMStar
         "sub_task": example.get("category", ""),
         "question": question,
         "choices": choices,
         "answer": answer_text,
-        # prompt is exactly the question content
         "prompt": question,
     }
 

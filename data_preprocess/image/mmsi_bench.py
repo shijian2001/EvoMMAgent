@@ -5,22 +5,7 @@ Processing pipeline:
 2. extract_images() - Extract PIL images from sample
 3. convert_sample() - Convert sample to unified format
 4. process_and_save() - Coordinate saving images and JSONL
-
-Dataset: RunsenXu/MMSI-Bench (1000 test samples)
-Fields: id, images (sequence), question_type, question, answer, thought,
-        mean_normed_duration_seconds, difficulty
 """
-
-'''
-# Local parquet:
-python mmsi_bench.py /mnt/sda/runhaofu/Datasets/MMSI-Bench/ --jsonl_path /mnt/sda/runhaofu/Datasets/test_dataset/mmsi_bench.jsonl --image_dir /mnt/sda/runhaofu/Datasets/test_dataset/mmsi_bench_images --num_proc 8
-
-# From HuggingFace:
-python mmsi_bench.py RunsenXu/MMSI-Bench --jsonl_path /path/to/mmsi_bench.jsonl --image_dir /path/to/mmsi_bench_images --num_proc 8
-'''
-'''
-python mmsi_bench.py /mnt/sda/runhaofu/Datasets/MMSI-Bench/ --jsonl_path /mnt/sda/runhaofu/Datasets/test_dataset/mmsi_bench.jsonl --image_dir /mnt/sda/runhaofu/Datasets/test_dataset/mmsi_bench_images --num_proc 8
-'''
 
 import argparse
 import io
@@ -37,17 +22,11 @@ from tqdm import tqdm
 # ============ Dataset-specific functions (customize per dataset) ============
 
 def load_dataset(input_dir: str):
-    """Load MMSI-Bench dataset from local dir (parquet) or HuggingFace.
-
-    Args:
-        input_dir: Local path to directory containing MMSI_Bench.parquet,
-                   or hub name e.g. "RunsenXu/MMSI-Bench".
-    """
+    """Load MMSI-Bench dataset from local dir (parquet) or HuggingFace."""
     input_path = Path(input_dir)
     parquet_file = input_path / "MMSI_Bench.parquet"
 
     if parquet_file.exists():
-        # Load from local parquet
         ds = datasets.load_dataset(
             "parquet",
             data_files={"test": str(parquet_file)},
@@ -55,7 +34,6 @@ def load_dataset(input_dir: str):
         )
         print(f"📂 Loaded from local parquet: {len(ds)} samples")
     else:
-        # Load from HuggingFace
         ds = datasets.load_dataset(input_dir, split="test")
         print(f"📂 Loaded from HuggingFace: {len(ds)} samples")
 
@@ -63,10 +41,7 @@ def load_dataset(input_dir: str):
 
 
 def extract_images(example: dict) -> list:
-    """Extract PIL images from MMSI-Bench sample.
-
-    MMSI-Bench stores images as list of bytes (binary) in parquet.
-    """
+    """Extract PIL images from MMSI-Bench sample."""
     images = example.get("images")
     if images is None:
         return []
@@ -110,7 +85,7 @@ def _parse_choices_from_question(question: str) -> list[str]:
 
 
 def _parse_answer(answer_raw: str, choices: list[str]) -> str:
-    """Parse answer letter 'A'/'B'/... -> actual choice text (same as BLINK)."""
+    """Parse answer letter 'A'/'B'/... -> actual choice text."""
     if not answer_raw or not choices:
         return answer_raw
     letter = answer_raw.strip().upper()
@@ -119,7 +94,7 @@ def _parse_answer(answer_raw: str, choices: list[str]) -> str:
 
 
 def convert_sample(example: dict, idx: int, image_paths: list[str]) -> dict:
-    """Convert MMSI-Bench sample to unified format (BLINK-style: choices/answer as content)."""
+    """Convert MMSI-Bench sample to unified format."""
     question = example.get("question", "")
     choices = _parse_choices_from_question(question)
     answer_raw = example.get("answer", "")

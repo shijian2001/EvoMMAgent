@@ -1,20 +1,10 @@
-"""Preprocess MMMU dataset to JSONL + image folder format, **keeping only multiple-choice questions**.
+"""Preprocess MMMU dataset to JSONL + image folder format, keeping only multiple-choice questions.
 
-This script is similar to `mmmu.py`, but filters out non-choice (e.g., open-ended/fill-in) questions.
-
-Usage (from HuggingFace MMMU/MMMU, validation split):
-
-  python mmmu_mc.py MMMU/MMMU \
-      --jsonl_path /path/to/mmmu_val_mc.jsonl \
-      --image_dir /path/to/mmmu_val_mc_images \
-      --split validation
-
-Example using local clone (same style as the original script):
-
-  python mmmu_mc.py /mnt/sda/runhaofu/Datasets/MMMU/ \
-      --jsonl_path /mnt/sda/runhaofu/Datasets/test_dataset/mmmu_mc.jsonl \
-      --image_dir /mnt/sda/runhaofu/Datasets/test_dataset/mmmu_mc_images \
-      --num_proc 8
+Processing pipeline:
+1. load_dataset() - Load source dataset (reuses mmmu.py loader)
+2. is_multiple_choice() - Filter to MC samples only
+3. convert_sample_mc() - Convert sample to unified format
+4. process_and_save_mc() - Coordinate saving images and JSONL
 """
 
 import argparse
@@ -33,32 +23,20 @@ from mmmu import (  # type: ignore
 
 
 def is_multiple_choice(example: dict) -> bool:
-    """Return True if this MMMU sample is a multiple-choice question.
-
-    We primarily rely on `question_type` when available, and fall back to the
-    presence of non-empty options.
-    """
+    """Return True if this MMMU sample is a multiple-choice question."""
     qtype = (example.get("question_type") or "").lower()
     if qtype:
-        # Common labels in MMMU for choice questions
         if qtype in {"multiple-choice", "multi-choice", "multiple_choice"}:
             return True
         if qtype in {"open", "open-ended", "fill-in", "free-form"}:
             return False
 
-    # Fallback: treat samples with at least 2 parsed options as multiple-choice
     choices = _parse_options(example.get("options"))
     return len(choices) >= 2
 
 
 def convert_sample_mc(example: dict, idx: int, image_paths: list[str]) -> dict:
-    """Convert a *multiple-choice* MMMU sample to the unified BLINK-style record format.
-
-    IMPORTANT: The output schema is aligned with BLINK:
-    - Only these fields are kept: idx, images, dataset, type, sub_task,
-      question, choices, answer, prompt.
-    - Any field that BLINK有但当前样本没有的字段，统一置为空字符串。
-    """
+    """Convert a multiple-choice MMMU sample to unified format."""
     options = example.get("options")
     choices = _parse_options(options)
     answer_raw = example.get("answer", "")
@@ -73,19 +51,13 @@ def convert_sample_mc(example: dict, idx: int, image_paths: list[str]) -> dict:
         "question": example.get("question", ""),
         "choices": choices,
         "answer": answer,
-        # BLINK 中存在但 MMMU 中没有的字段，统一置空
         "prompt": "",
     }
     return record
 
 
 def process_and_save_mc(dataset, jsonl_path: Path, image_dir: Path):
-    """Process dataset and save only multiple-choice records to JSONL + image folder.
-
-    Notes:
-    - `idx` is re-assigned to be dense [0..N_mc-1] over **kept** (MC) samples.
-    - Image subfolders follow the same `{idx:05d}/{img_idx:05d}.png` pattern as `mmmu.py`.
-    """
+    """Process dataset and save only multiple-choice records to JSONL + image folder."""
     jsonl_path.parent.mkdir(parents=True, exist_ok=True)
     image_dir.mkdir(parents=True, exist_ok=True)
 

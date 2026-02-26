@@ -7,9 +7,6 @@ Processing pipeline:
 4. process_and_save() - Copy images and write JSONL
 """
 
-'''
-python vstar_bench.py /mnt/sda/runhaofu/Datasets/vstar_bench/ --jsonl_path /mnt/sda/runhaofu/Datasets/test_dataset/vstar_bench_val.json --image_dir /mnt/sda/runhaofu/Datasets/test_dataset/vstar_bench_images --num_proc 8
-'''
 import argparse
 import json
 import re
@@ -79,9 +76,8 @@ def _parse_answer(label: str, choices: list) -> str:
 
 
 def convert_sample(example: dict, idx: int, image_paths: list) -> dict:
-    """Convert vstar_bench sample to unified format (BLINK-style)."""
+    """Convert vstar_bench sample to unified format."""
     text = example.get("text", "")
-    # Only use parsed choices; keep question identical to prompt text
     _, choices = parse_text_to_question_choices(text)
     return {
         "idx": idx,
@@ -142,7 +138,6 @@ def process_and_save(dataset: list, jsonl_path: Path, image_dir: Path, input_dir
             )
         )
 
-    # Drop failed
     records = [r for r in records if r is not None]
     if len(records) < len(dataset):
         print(f"⚠️ Skipped {len(dataset) - len(records)} samples (missing image or error)")
