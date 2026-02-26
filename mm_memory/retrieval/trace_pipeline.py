@@ -84,7 +84,10 @@ class TracePipeline:
             await self.reranker.close()
 
     async def run(
-        self, question: str, images: Optional[List[str]] = None
+        self,
+        question: str,
+        images: Optional[List[str]] = None,
+        sub_task: str = "",
     ) -> str:
         """Run the full retrieval pipeline.
 
@@ -94,6 +97,7 @@ class TracePipeline:
         Args:
             question: User's question
             images: Input image paths
+            sub_task: Optional task type label (if available)
 
         Returns:
             Experience string.  Empty string if nothing useful found.
@@ -150,9 +154,13 @@ class TracePipeline:
                 continue
 
             # --- Step 3: Rerank ---
-            rerank_query = question
+            rerank_parts = []
             if image_caption:
-                rerank_query = f"{question}\nImage description: {image_caption}"
+                rerank_parts.append(f"Image description: {image_caption}")
+            rerank_parts.append(f"Question: {question}")
+            if sub_task:
+                rerank_parts.append(f"Task: {sub_task}")
+            rerank_query = "\n".join(rerank_parts)
 
             if self.config.enable_rerank and self.reranker:
                 for c in candidates:

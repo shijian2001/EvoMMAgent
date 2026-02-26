@@ -169,7 +169,7 @@ class MemoryBank:
         # Question
         question = trace.get("input", {}).get("question", "")
         if question:
-            parts.append(question)
+            parts.append(f"Question: {question}")
 
         # Sub-task type
         sub_task = trace.get("sub_task", "")

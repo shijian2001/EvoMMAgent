@@ -4,7 +4,7 @@ Two retrieval modes, switchable via `config.retrieval.mode`:
 
 | Mode | Granularity | Experience source | Online cost |
 |------|-------------|-------------------|-------------|
-| `state` | Per-step (MDP state) | Hindsight-annotated (state, action) pairs | 1 embedding call/step |
+| `state` | Per-step (MDP state) | Hindsight-annotated (state, action) pairs | 1 VLM caption (first step only) + 1 embedding/step |
 | `trace` | Per-task | Summarized from similar traces | LLM rewrite + rerank + summary |
 
 ---
@@ -40,18 +40,19 @@ python scripts/build_state_bank.py \
 1. 扫描 `tasks/*/trace.json`，过滤 `is_correct=True`
 2. 转换为 MDP trajectory：`think + action → atomic action a_t = (thinking, tool, params, observation)`，answer 作为终端 action
 3. VL 模型 hindsight 标注：一次 LLM 调用/trace，输入完整轨迹 + 原始图片，输出每个 (state, action) 的 Q-value (0-10) 和 experience (1-2 句)
-4. 过滤 Q >= min_q 的 state，用 `StateBank.state_to_text()` 序列化
-5. Embedding 编码 → 持久化 `state_bank/embeddings.npy` + `state_meta.json`
+4. VLM 为每条 trace 的输入图像生成 image caption（多图 → 1 caption），复用同一 `api_pool`
+5. 过滤 Q >= min_q 的 state，用 `StateBank.state_to_text(image_caption=...)` 序列化
+6. Embedding 编码 → 持久化 `state_bank/embeddings.npy` + `state_meta.json`（含 `image_caption` 字段）
 
 ### Online: 每步检索
 
-每轮 agent 迭代开始时：
-1. `StateBank.state_to_text()` 序列化当前 state（与离线同一函数，格式一致）
-2. Embed → cosine search StateBank（Q-value 二次过滤）
-3. 取 top `experience_top_n` 条预计算 experience，注入为 user message
-4. 下一轮开始前清除旧 experience message
+1. （首步）VLM 生成 image caption 并缓存（1 次调用，后续复用）
+2. 每轮 `StateBank.state_to_text(image_caption=cached)` 序列化当前 state（与离线同一函数，格式一致）
+3. Embed → cosine search StateBank（Q-value 二次过滤）
+4. 取 top `experience_top_n` 条预计算 experience，注入为 user message
+5. 下一轮开始前清除旧 experience message
 
-**无在线 LLM 调用，无 rerank，延迟极低。**
+**无 rerank，无 summary LLM 调用，延迟极低。**
 
 ### 配置项
 
@@ -91,7 +92,7 @@ python scripts/build_memory_bank.py \
 流程：
 1. 扫描 `tasks/*/trace.json`，过滤 `is_correct=True`
 2. （可选）VLM 为每条 trace 的输入图像生成 caption
-3. 构建 index text = `Image description: {caption}\n{question}\nTask: {sub_task}\nTools: {tools}`
+3. 构建 index text = `Image description: {caption}\nQuestion: {question}\nTask: {sub_task}\nTools: {tools}`
 4. Embedding 编码 → 持久化 `trace_bank/embeddings.npy` + `task_ids.json` + `captions.json`
 
 ### Online: 检索流程

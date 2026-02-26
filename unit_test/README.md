@@ -85,7 +85,7 @@ python unit_test/trace_level/test_local.py
 | 测试项 | 逻辑 | 预期 |
 |--------|------|------|
 | Config 默认值 | 检查 `RetrievalConfig.enable=False`，`Config.retrieval` 集成 | 新功能默认关闭，不影响原有流程 |
-| build_index_text | 用假 trace 构建索引文本 | 输出包含 question/tools/answer，非空 |
+| build_index_text | 用假 trace 构建索引文本 | 输出包含 `Question:` 前缀的 question、tools，不含 answer |
 | MemoryBank 加载+搜索 | 写入随机 embedding → 加载 → cosine search | 返回 top-k 结果，含 retrieval_score 和完整 trace 数据 |
 | MemoryBank 缺失处理 | 无 bank/ 目录时初始化 | 抛出 FileNotFoundError |
 
@@ -141,7 +141,7 @@ python unit_test/state_level/test_local.py
 |--------|------|------|
 | Config mode 默认值 | `RetrievalConfig.mode="state"`, `min_q_value=5` | 新 state mode 字段正确 |
 | convert_trace_to_trajectory | 原始 trace → MDP trajectory | think+action 合并为 atomic action |
-| StateBank.state_to_text | 序列化 s_0, s_1, s_2 | s_0 只有 query，s_t 包含前 t 个 action 摘要 |
+| StateBank.state_to_text | 序列化 s_0, s_1, s_2（含/不含 caption） | s_0 = `Image description:` + `Question:` + `Task:`，s_t 追加 action 摘要 |
 | StateBank 加载+搜索 | 合成 embedding → cosine search + Q-value 过滤 | 返回 top-k，Q < min_q 被过滤 |
 | StateBank 缺失处理 | 无 state_bank/ 目录 | 抛出 FileNotFoundError |
 

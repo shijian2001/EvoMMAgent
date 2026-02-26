@@ -411,7 +411,11 @@ class MultimodalAgent(BasicAgent):
                         img if isinstance(img, str) else img.get("image")
                         for img in images
                     ]
-                experience = await self.retrieval_pipeline.run(query, image_paths)
+                experience = await self.retrieval_pipeline.run(
+                    query,
+                    image_paths,
+                    sub_task=memory.trace_data.get("sub_task", ""),
+                )
                 if verbose and experience:
                     logger.info(f"Retrieved trace-level experience ({len(experience)} chars)")
             except Exception as e:
@@ -472,6 +476,28 @@ class MultimodalAgent(BasicAgent):
         # Track execution history for logging
         history = []
         
+        # State-level retrieval: generate one caption for initial input images
+        state_image_caption = ""
+        if (
+            self.retrieval_pipeline
+            and self.config.retrieval.mode == "state"
+            and images
+        ):
+            from mm_memory.memory_bank import MemoryBank
+
+            image_paths = [
+                img if isinstance(img, str) else img.get("image")
+                for img in images
+            ]
+            image_paths = [p for p in image_paths if p and os.path.exists(p)]
+            if image_paths:
+                try:
+                    state_image_caption = await MemoryBank._generate_caption(
+                        self.api_pool, image_paths
+                    )
+                except Exception as e:
+                    logger.warning(f"State caption generation failed: {e}")
+
         # State-level retrieval: maintain trajectory for state serialization
         current_trajectory = []
         _EXPERIENCE_TAG = "[Experience from similar reasoning states]"
@@ -491,7 +517,10 @@ class MultimodalAgent(BasicAgent):
                 ]
                 from mm_memory.state_bank import StateBank
                 state_text = StateBank.state_to_text(
-                    memory.trace_data, current_trajectory, len(current_trajectory)
+                    memory.trace_data,
+                    current_trajectory,
+                    len(current_trajectory),
+                    image_caption=state_image_caption,
                 )
                 try:
                     exp = await self.retrieval_pipeline.retrieve(state_text)

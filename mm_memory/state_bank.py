@@ -122,16 +122,18 @@ class StateBank:
         trace_data: Dict[str, Any],
         trajectory: List[Dict[str, Any]],
         step_index: int,
+        image_caption: str = "",
     ) -> str:
         """Serialize state s_t into text for embedding.
 
-        s_0 = question (+ sub_task).
-        s_t = question + summary of a_0 ... a_{t-1}.
+        s_0 = image caption + question (+ sub_task).
+        s_t = s_0 + summary of a_0 ... a_{t-1}.
 
         Args:
             trace_data: Parsed trace.json dict (needs ``input.question``, optional ``sub_task``)
             trajectory: List of trajectory entries (each has ``action`` dict)
             step_index: Current step index (0 = initial state)
+            image_caption: Optional 1-2 sentence image description for the task
 
         Returns:
             Text representation of state s_t
@@ -139,9 +141,13 @@ class StateBank:
         query = trace_data.get("input", {}).get("question", "")
         sub_task = trace_data.get("sub_task", "")
 
-        parts = [query]
+        parts = []
+        if image_caption:
+            parts.append(f"Image description: {image_caption}")
+        if query:
+            parts.append(f"Question: {query}")
         if sub_task:
-            parts.append(f"[{sub_task}]")
+            parts.append(f"Task: {sub_task}")
 
         for i in range(step_index):
             a = trajectory[i]["action"]

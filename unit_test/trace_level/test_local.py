@@ -49,7 +49,7 @@ def test_build_index_text():
 
     # ── 2a. 基本 trace（无 caption）──
     text = MemoryBank.build_index_text(FAKE_TRACES[0])
-    assert "What color" in text, "应包含 question"
+    assert "Question: What color" in text, "应包含带前缀的 question"
     assert "localize_objects" in text, "应包含工具名"
     assert "Answer" not in text, "index text 不应包含 answer"
     ok(f"Trace 000001 → '{text[:80]}...'")
@@ -57,6 +57,7 @@ def test_build_index_text():
     # ── 2b. 带 caption ──
     text_cap = MemoryBank.build_index_text(FAKE_TRACES[0], caption="A red car in a parking lot")
     assert text_cap.startswith("Image description: A red car"), "caption 应以 'Image description:' 开头"
+    assert "Question: What color" in text_cap, "caption 版本也应包含带前缀的 question"
     ok(f"With caption → '{text_cap[:80]}...'")
 
     # ── 2c. Tools 去重保序 ──

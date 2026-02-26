@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 
 from api.json_parser import JSONParser
+from mm_memory.memory_bank import MemoryBank
 from mm_memory.state_bank import StateBank
 from mm_memory.retrieval.embedder import Embedder
 
@@ -148,9 +149,10 @@ def build_hindsight_prompt(
     type_line = f"\nType: {sub_task}" if sub_task else ""
 
     prompt = f"""\
-You are evaluating a complete agent reasoning trace. The task was solved CORRECTLY.
-The process may be highly efficient, or it may contain wasteful, redundant, or
-error-prone steps. Judge each step by the quality and relevance of its output.
+You are evaluating a complete agent reasoning trace that reached the correct answer.
+However, reaching the correct answer does not mean every step was useful — some
+steps may be wasteful, redundant, or produce misleading or erroneous intermediate
+results. Judge each step by the quality and relevance of its output.
 
 ## Task
 {images_note}Question: {question}{type_line}
@@ -165,9 +167,10 @@ is what the agent has seen so far, including all previous actions and observatio
 For each (state, action) pair, provide:
 
 1. q_value (0-10): Rate the quality of this action at this state.
-   A correct final answer does NOT mean every step was good. Judge each step
-   by whether it produced accurate, relevant information that actually
-   contributed to reaching the answer.
+   At each state, consider what the agent already knows from all previous
+   observations. Rate whether this action provides new, necessary information
+   beyond what is already available. Score relatively across all states in
+   this trace — not every step deserves a high score.
    - 9-10: Essential — produced decisive information that directly shaped
            the answer, or answered correctly at the right time
    - 7-8: Helpful — useful output that advanced the solution, with minor
@@ -228,36 +231,41 @@ async def annotate_single(
     else:
         user_content = prompt
 
-    try:
-        result = await api_pool.execute(
-            "qa",
-            system="You are a precise trajectory evaluator. Always respond in valid JSON.",
-            messages=[{"role": "user", "content": user_content}],
-            temperature=0.2,
-            max_tokens=2000,
-        )
-        answer = result.get("answer", "")
-        parsed = JSONParser.parse(answer)
+    task_id = trace_data.get("task_id", "?")
 
-        if isinstance(parsed, list):
-            ann_map = {a.get("state", a.get("state_index")): a for a in parsed if isinstance(a, dict)}
-            for entry in trajectory:
-                idx = entry["state_index"]
-                if idx in ann_map:
-                    entry["q_value"] = ann_map[idx].get("q_value", 5)
-                    entry["experience"] = ann_map[idx].get("experience", "")
-                else:
-                    entry["q_value"] = 5
-                    entry["experience"] = ""
-            return trajectory
+    for attempt in range(3):
+        try:
+            result = await api_pool.execute(
+                "qa",
+                system="You are a precise trajectory evaluator. Always respond in valid JSON.",
+                messages=[{"role": "user", "content": user_content}],
+                temperature=0.2,
+                max_tokens=2000,
+            )
+            answer = result.get("answer", "")
+            parsed = JSONParser.parse(answer)
 
-        logger.warning(f"Unexpected parse result type: {type(parsed)}")
-        return None
+            if isinstance(parsed, list):
+                ann_map = {a.get("state", a.get("state_index")): a for a in parsed if isinstance(a, dict)}
+                for entry in trajectory:
+                    idx = entry["state_index"]
+                    if idx in ann_map:
+                        entry["q_value"] = ann_map[idx].get("q_value", 5)
+                        entry["experience"] = ann_map[idx].get("experience", "")
+                    else:
+                        entry["q_value"] = 5
+                        entry["experience"] = ""
+                return trajectory
 
-    except Exception as e:
-        task_id = trace_data.get("task_id", "?")
-        logger.warning(f"Annotation failed for {task_id}: {e}")
-        return None
+            logger.warning(
+                f"Unexpected parse result type for {task_id}: {type(parsed)} "
+                f"(attempt {attempt + 1}/3)"
+            )
+
+        except Exception as e:
+            logger.warning(f"Annotation failed for {task_id}: {e} (attempt {attempt + 1}/3)")
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -325,17 +333,49 @@ async def build_state_bank(
     if not annotated:
         raise ValueError("No traces were successfully annotated")
 
+    # ── Generate one image caption per trace (all input images -> one caption) ──
+    captions_by_task: Dict[str, str] = {}
+
+    async def _caption(task_id: str, trace_data: Dict[str, Any]) -> None:
+        input_images = trace_data.get("input", {}).get("images", [])
+        image_paths = []
+        for img in input_images:
+            if isinstance(img, dict):
+                p = img.get("path")
+            else:
+                p = img
+            if p and os.path.exists(p):
+                image_paths.append(p)
+
+        if not image_paths:
+            captions_by_task[task_id] = ""
+            return
+
+        async with sem:
+            caption = await MemoryBank._generate_caption(api_pool, image_paths)
+        captions_by_task[task_id] = caption or ""
+
+    await asyncio.gather(*[_caption(task_id, trace_data) for task_id, trace_data, _ in annotated])
+    caption_count = sum(1 for c in captions_by_task.values() if c)
+    logger.info(f"Generated captions for {caption_count}/{len(annotated)} traces")
+
     # ── Extract states with Q >= min_q ──
     state_texts: List[str] = []
     state_metas: List[Dict[str, Any]] = []
 
     for task_id, trace_data, trajectory in annotated:
+        image_caption = captions_by_task.get(task_id, "")
         for entry in trajectory:
             q = entry.get("q_value", 0)
             if q < min_q:
                 continue
             step = entry["state_index"]
-            text = StateBank.state_to_text(trace_data, trajectory, step)
+            text = StateBank.state_to_text(
+                trace_data,
+                trajectory,
+                step,
+                image_caption=image_caption,
+            )
             if not text.strip():
                 continue
             state_texts.append(text)
@@ -344,6 +384,7 @@ async def build_state_bank(
                 "state": step,
                 "experience": entry.get("experience", ""),
                 "q_value": q,
+                "image_caption": image_caption,
                 "state_text": text,
             })
 

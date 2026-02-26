@@ -173,15 +173,18 @@ def test_state_to_text_no_truncation():
         "sub_task": "color_recognition",
     }
 
-    # s_0: just the question
+    # s_0: question/task with prefixes, no action history
     s0 = StateBank.state_to_text(trace_data, FAKE_TRAJECTORY, 0)
-    assert "What color is the car?" in s0
-    assert "color_recognition" in s0
+    assert "Question: What color is the car?" in s0
+    assert "Task: color_recognition" in s0
+    assert "Image description:" not in s0, "No caption should not add image description line"
     assert "localize_objects" not in s0, "s_0 should have no action history"
     ok(f"s_0 = '{s0}'")
 
-    # s_1: question + a_0 summary — full observation, not truncated
+    # s_1: prefixed question/task + a_0 summary — full observation, not truncated
     s1 = StateBank.state_to_text(trace_data, FAKE_TRAJECTORY, 1)
+    assert "Question: What color is the car?" in s1
+    assert "Task: color_recognition" in s1
     assert "localize_objects" in s1
     # The full observation should be present, not truncated
     assert "bbox_3(0.2,0.3,0.35,0.45)" in s1, "Observation should NOT be truncated"
@@ -215,6 +218,29 @@ def test_state_to_text_no_truncation():
     s_long = StateBank.state_to_text(trace_data, long_traj, 1)
     assert long_obs in s_long, "500-char observation should NOT be truncated"
     ok(f"500-char observation preserved in full")
+
+    # Verify caption is preserved in s_0 and inherited by later states
+    caption = "A red car in a parking lot with several vehicles."
+    s0_cap = StateBank.state_to_text(
+        trace_data,
+        FAKE_TRAJECTORY,
+        0,
+        image_caption=caption,
+    )
+    assert "Image description: A red car in a parking lot" in s0_cap
+    assert "Question: What color is the car?" in s0_cap
+    assert "Task: color_recognition" in s0_cap
+
+    s2_cap = StateBank.state_to_text(
+        trace_data,
+        FAKE_TRAJECTORY,
+        2,
+        image_caption=caption,
+    )
+    assert "Image description: A red car in a parking lot" in s2_cap
+    assert "localize_objects" in s2_cap
+    assert "crop" in s2_cap
+    ok("Caption appears in s_0 and persists in later states")
 
 
 def test_state_bank_search():
