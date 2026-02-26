@@ -110,7 +110,7 @@ async def main():
         "max_tokens": 40000,
         "temperature": 0.7,
         "enable_memory": False,
-        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260219/retrieve_exp/meta_test/blink/qwen3vl_32b/w_retrieve",
+        "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260222/retrieve_exp/meta_test/blink/qwen3vl_32b/w_state_retrieve",
         "max_iterations": 20,
         "max_retries": 20,
         "mm_agent_template_en_file": "exp_prompt/more_tool_call/en.jinja2",
@@ -136,7 +136,7 @@ async def main():
         jsonl_path="data/eval/image/BLINK/blink_data_meta_test.jsonl",
         image_dir="data/eval/image/BLINK/blink_images",
         agent_config=agent_config,
-        output_dir="eval_results/20260219/retrieve_exp/meta_test/blink/qwen3vl_32b/w_retrieve",
+        output_dir="eval_results/20260222/retrieve_exp/meta_test/blink/qwen3vl_32b/w_state_retrieve",
         batch_size=100,
         max_concurrent=10,
         verbose=True
