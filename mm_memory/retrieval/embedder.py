@@ -1,12 +1,14 @@
 """Embedding client for vLLM-deployed embedding models.
 
-Uses AsyncOpenAI to call the standard /v1/embeddings endpoint
-served by vLLM.
+Uses AsyncOpenAI for text embeddings and httpx for multimodal
+embeddings (vLLM requires ``messages`` format for vision models).
 """
 
 import asyncio
+import base64
 import logging
 import os
+from io import BytesIO
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -100,24 +102,48 @@ class Embedder:
     async def encode_multimodal(self, text: str, image_paths: List[str]) -> np.ndarray:
         """Encode one multimodal query (text + one or more images).
 
+        vLLM multimodal embedding models require the chat-style ``messages``
+        format instead of ``input``.  Images are base64-encoded (consistent
+        with ``api/vision_utils.py``) so no ``--allowed-local-media-path``
+        flag is needed on the vLLM server.
+
         For multiple images, embeddings are averaged across per-image encodings.
         """
         valid_paths = [p for p in image_paths if p and os.path.exists(p)]
         if not valid_paths:
             return await self.encode_text([text or ""])
 
+        import httpx
+        base_url = str(self.client.base_url).rstrip("/")
+        headers = {"Authorization": f"Bearer {self.client.api_key}"}
+
         per_image_embeddings: List[np.ndarray] = []
         for path in valid_paths:
-            image_uri = f"file://{os.path.abspath(path)}"
-            payload = {"text": text or "", "image": image_uri}
+            from PIL import Image
+            img = Image.open(path)
+            buf = BytesIO()
+            img.save(buf, format="JPEG")
+            img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+            messages = [{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                    {"type": "text", "text": text or ""},
+                ],
+            }]
 
             for attempt in range(self.max_retries):
                 try:
-                    response = await self.client.embeddings.create(
-                        model=self.model_name,
-                        input=[payload],
-                    )
-                    emb = np.array([response.data[0].embedding], dtype=np.float32)
+                    async with httpx.AsyncClient(timeout=60) as http:
+                        resp = await http.post(
+                            f"{base_url}/embeddings",
+                            json={"model": self.model_name, "messages": messages},
+                            headers=headers,
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
+                    emb = np.array([data["data"][0]["embedding"]], dtype=np.float32)
                     self._dim = emb.shape[1]
                     per_image_embeddings.append(emb)
                     break
