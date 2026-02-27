@@ -149,10 +149,9 @@ def build_hindsight_prompt(
     type_line = f"\nType: {sub_task}" if sub_task else ""
 
     prompt = f"""\
-You are evaluating a complete agent reasoning trace that reached the correct answer.
-However, reaching the correct answer does not mean every step was useful — some
-steps may be wasteful, redundant, or produce misleading or erroneous intermediate
-results. Judge each step by the quality and relevance of its output.
+You are evaluating a complete agent reasoning trace. The task was solved CORRECTLY.
+The process may be highly efficient, or it may contain wasteful, redundant, or
+error-prone steps. Judge each step by the quality and relevance of its output.
 
 ## Task
 {images_note}Question: {question}{type_line}
@@ -167,10 +166,9 @@ is what the agent has seen so far, including all previous actions and observatio
 For each (state, action) pair, provide:
 
 1. q_value (0-10): Rate the quality of this action at this state.
-   At each state, consider what the agent already knows from all previous
-   observations. Rate whether this action provides new, necessary information
-   beyond what is already available. Score relatively across all states in
-   this trace — not every step deserves a high score.
+   A correct final answer does NOT mean every step was good. Judge each step
+   by whether it produced accurate, relevant information that actually
+   contributed to reaching the answer.
    - 9-10: Essential — produced decisive information that directly shaped
            the answer, or answered correctly at the right time
    - 7-8: Helpful — useful output that advanced the solution, with minor
@@ -454,8 +452,8 @@ async def main():
         help="API key for the embedding service (default: dummy)",
     )
     parser.add_argument(
-        "--min_q", type=int, default=7,
-        help="Minimum Q-value to include a state (default: 7)",
+        "--min_q", type=int, default=5,
+        help="Minimum Q-value to include a state (default: 5)",
     )
     parser.add_argument(
         "--batch_size", type=int, default=32,
