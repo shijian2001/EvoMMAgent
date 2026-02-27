@@ -319,7 +319,6 @@ class MultimodalAgent(BasicAgent):
         Returns:
             Dict with answer, tool_calls (if any), and other metadata
         """
-        logger.info(f"[debug] tools sent to LLM: {[t['function']['name'] for t in (tools or [])]}")
         result = await self.api_pool.execute(
             "qa",
             system=system_prompt,

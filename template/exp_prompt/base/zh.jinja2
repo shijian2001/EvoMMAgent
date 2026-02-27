@@ -33,7 +33,7 @@
 {% if has_state_retrieval %}
 
 ## 经验检索
-每次行动前，考虑调用 `search_experiences` 检索相似已解决任务的建议。选择与当前信息需求最匹配的视角，如需更广泛的指导可用不同视角多次调用。
+每次行动前，你必须先调用 `search_experiences` 检索相似已解决任务的建议。选择与当前信息需求最匹配的视角。若建议不够充分，可用不同视角再次调用。
 {% endif %}
 {% if trace_experience %}
 

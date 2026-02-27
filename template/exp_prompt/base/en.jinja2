@@ -33,7 +33,7 @@ Images not shown are saved in the memory system. You can use get_images with ima
 {% if has_state_retrieval %}
 
 ## Experience Retrieval
-Before each action step, consider calling `search_experiences` to retrieve advice from similar solved tasks. Choose a view that best matches your current information needs. You may call it multiple times with different views if you need broader guidance.
+You MUST call `search_experiences` before each action step to retrieve advice from similar solved tasks. Choose a view that best matches your current information needs. You may call it again with a different view if the advice is insufficient.
 {% endif %}
 {% if trace_experience %}
 
