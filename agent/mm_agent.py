@@ -615,13 +615,7 @@ class MultimodalAgent(BasicAgent):
                         })
                         state_experience = obs_text
                         pending_retrieval_logs.append(log_entry)
-                        force_search = (
-                            self.search_experiences_tool._round < max_epoch
-                            and any(
-                                v not in self.search_experiences_tool._used_views
-                                for v in self.search_experiences_tool._available_views
-                            )
-                        )
+                        force_search = False
                         if verbose:
                             logger.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
                             logger.info(f"   Input: {tool_args}")
