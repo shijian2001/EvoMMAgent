@@ -151,12 +151,19 @@ class Memory:
         """
         content = content.strip()
         
-        step = len(self.trace_data["trace"]) + 1
+        step = self._next_step()
         self.trace_data["trace"].append({
             "step": step,
             "type": "think",
             "content": content
         })
+
+    def log_state_retrieval(self, next_step: int, rounds: List[Dict[str, Any]]) -> None:
+        """Log retrieval rounds for the upcoming step without consuming step ids."""
+        if not rounds:
+            return
+        key = f"experience_for_step_{next_step}"
+        self.trace_data["trace"].append({key: rounds})
     
     def log_action(
         self,
@@ -182,7 +189,7 @@ class Memory:
         Returns:
             output_id: Reference ID of output if created, else None
         """
-        step = len(self.trace_data["trace"]) + 1
+        step = self._next_step()
         output_id = None
         
         # If tool produces multimodal output
@@ -287,7 +294,7 @@ class Memory:
             content: Answer content
             experience: Optional retrieved experience that guided this answer
         """
-        step = len(self.trace_data["trace"]) + 1
+        step = self._next_step()
         entry = {
             "step": step,
             "type": "answer",
@@ -297,6 +304,19 @@ class Memory:
             entry["experience"] = experience
         self.trace_data["trace"].append(entry)
         self.trace_data["answer"] = content
+
+    def _next_step(self) -> int:
+        """Return next step number counting only entries with explicit step."""
+        if not self.trace_data:
+            return 1
+        max_step = 0
+        for item in self.trace_data.get("trace", []):
+            if isinstance(item, dict) and "step" in item:
+                try:
+                    max_step = max(max_step, int(item["step"]))
+                except (TypeError, ValueError):
+                    continue
+        return max_step + 1
     
     def end_task(self, success: bool = True, is_correct: bool = None):
         """Finalize task and save trace.

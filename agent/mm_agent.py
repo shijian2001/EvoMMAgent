@@ -147,6 +147,7 @@ class MultimodalAgent(BasicAgent):
         
         # Retrieval pipeline (pluggable, only initialized when enabled)
         self.retrieval_pipeline = None
+        self.search_experiences_tool = None
         if config.retrieval.enable:
             self._init_retrieval_pipeline(config.retrieval)
     
@@ -205,17 +206,19 @@ class MultimodalAgent(BasicAgent):
         
         elif rc.mode == "state":
             from mm_memory.state_bank import StateBank
-            from mm_memory.retrieval.state_pipeline import StatePipeline
+            from tool.search_experiences_tool import SearchExperiencesTool
             
             state_bank = StateBank(
                 rc.bank_memory_dir,
                 bank_dir_name=rc.bank_dir_name or "state_bank",
             )
-            self.retrieval_pipeline = StatePipeline(
-                config=rc,
+            self.search_experiences_tool = SearchExperiencesTool(
                 state_bank=state_bank,
                 embedder=embedder,
+                retrieval_config=rc,
             )
+            self.tool_bank["search_experiences"] = self.search_experiences_tool
+            self.retrieval_pipeline = None
         
         else:
             raise ValueError(f"Unknown retrieval mode: {rc.mode}")
@@ -482,68 +485,42 @@ class MultimodalAgent(BasicAgent):
         # Track execution history for logging
         history = []
         
-        # State-level retrieval: generate one caption for initial input images
-        state_image_caption = ""
-        if (
-            self.retrieval_pipeline
-            and self.config.retrieval.mode == "state"
-            and images
-        ):
-            from mm_memory.memory_bank import MemoryBank
-
-            image_paths = [
-                img if isinstance(img, str) else img.get("image")
-                for img in images
-            ]
-            image_paths = [p for p in image_paths if p and os.path.exists(p)]
-            if image_paths:
-                try:
-                    state_image_caption = await MemoryBank._generate_caption(
-                        self.api_pool, image_paths
-                    )
-                except Exception as e:
-                    logger.warning(f"State caption generation failed: {e}")
-
-        # State-level retrieval: maintain trajectory for state serialization
+        # State-level retrieval tracking (search_experiences tool)
         current_trajectory = []
-        _EXPERIENCE_TAG = "[Experience from similar reasoning states]"
-        
-        for iteration in range(self.max_iterations):
-            # Track retrieved experience for this iteration (logged with action/answer)
-            current_experience: Optional[str] = None
-            
-            # State-level retrieval: retrieve experience for current state
-            if self.retrieval_pipeline and self.config.retrieval.mode == "state":
-                # Remove previous experience message (if any)
-                conversation_history = [
-                    msg for msg in conversation_history
-                    if not (msg.get("role") == "user"
-                            and isinstance(msg.get("content"), str)
-                            and msg["content"].startswith(_EXPERIENCE_TAG))
-                ]
-                from mm_memory.state_bank import StateBank
-                state_text = StateBank.state_to_text(
-                    memory.trace_data,
-                    current_trajectory,
-                    len(current_trajectory),
-                    image_caption=state_image_caption,
-                )
-                try:
-                    exp = await self.retrieval_pipeline.retrieve(state_text)
-                    if exp:
-                        current_experience = exp
-                        conversation_history.append({
-                            "role": "user",
-                            "content": f"{_EXPERIENCE_TAG}\n{exp}",
-                        })
-                        if verbose:
-                            logger.info(f"Retrieved state-level experience ({len(exp)} chars)")
-                except Exception as e:
-                    logger.warning(f"State retrieval failed: {e}")
+        current_experience: Optional[str] = None
+        pending_retrieval_logs: List[Dict[str, Any]] = []
+        retrieval_state_index = -1
+
+        action_turns = 0
+        total_turns = 0
+        max_epoch = int(getattr(self.config.retrieval, "max_epoch", 1))
+        max_total_turns = self.max_iterations + max(1, max_epoch) * max(1, self.max_iterations)
+
+        def _flush_pending_retrieval_logs() -> None:
+            if memory and pending_retrieval_logs:
+                next_step = memory._next_step()
+                memory.log_state_retrieval(next_step=next_step, rounds=list(pending_retrieval_logs))
+                pending_retrieval_logs.clear()
+
+        while action_turns < self.max_iterations and total_turns < max_total_turns:
+            total_turns += 1
+
+            if self.search_experiences_tool and memory:
+                state_index = len(current_trajectory)
+                if state_index != retrieval_state_index:
+                    from mm_memory.state_bank import StateBank
+
+                    state_elements = StateBank.state_to_elements(
+                        memory.trace_data,
+                        current_trajectory,
+                        state_index,
+                    )
+                    self.search_experiences_tool.reset_state(state_elements)
+                    retrieval_state_index = state_index
             
             # Clean old images from history (keep only most recent tool message images)
             # Only clean when memory is enabled, as images can be retrieved via get_images
-            if iteration >= 1 and self.enable_memory:
+            if action_turns >= 1 and self.enable_memory:
                 self._clean_old_images(conversation_history)
                 
                 # Update "Available images" to "Images in memory" in first user message
@@ -558,7 +535,7 @@ class MultimodalAgent(BasicAgent):
             
             if verbose:
                 logger.info(f"\n{'─'*80}")
-                logger.info(f"🔄 ITERATION {iteration + 1}")
+                logger.info(f"🔄 ITERATION {total_turns}")
                 logger.info(f"{'─'*80}")
             
             # Call LLM with full conversation history
@@ -603,11 +580,16 @@ class MultimodalAgent(BasicAgent):
             if tool_calls:
                 # Model wants to call tools
                 assistant_content = response.get("answer", "") or ""
-                
-                # Log thinking if present
-                if memory and assistant_content:
+                all_search_calls = all(
+                    tc.get("function", {}).get("name") == "search_experiences"
+                    for tc in tool_calls
+                )
+
+                # Log thinking only for real action/answer planning.
+                if memory and assistant_content and not all_search_calls:
+                    _flush_pending_retrieval_logs()
                     memory.log_think(assistant_content)
-                
+
                 # Add assistant message with tool_calls to conversation history
                 assistant_message = {
                     "role": "assistant",
@@ -615,291 +597,326 @@ class MultimodalAgent(BasicAgent):
                     "tool_calls": tool_calls
                 }
                 conversation_history.append(assistant_message)
-                
+
                 # Process each tool call
                 for tool_call in tool_calls:
                     tool_id = tool_call["id"]
                     tool_name = tool_call["function"]["name"]
                     tool_args = tool_call["function"]["arguments"]
-                    
-                    # Resolve IDs if memory enabled
-                original_properties = None
-                resolved_args_str = tool_args
-                
-                if memory:
-                    try:
+
+                    # State-level retrieval tool (special: async + no step counting/log_action)
+                    if tool_name == "search_experiences" and self.search_experiences_tool:
                         tool_args_dict = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
-                        if isinstance(tool_args_dict, dict):
-                            original_properties = tool_args_dict.copy()
-                            # Special handling: get_images needs IDs, not paths
-                            if tool_name != "get_images":
-                                resolved_args = memory.resolve_ids(tool_args_dict)
-                                resolved_args_str = json.dumps(resolved_args)
-                    except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
-                        logger.debug(f"Failed to resolve IDs in tool args: {e}")
-                        pass
-                
-                tool_result = self._call_tool(tool_name, resolved_args_str)
-                
-                # Special handling for get_images tool
-                if isinstance(tool_result, dict) and "_get_images_ids" in tool_result:
-                    image_ids = tool_result["_get_images_ids"]
-                    observation_text = tool_result.get("message", "Images loaded")
-                    
-                    # Add tool message with text-only observation
-                    conversation_history.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": observation_text
-                    })
-                    
-                    # Add user message with images
-                    if memory and image_ids:
-                        user_content = []
-                        for img_id in image_ids:
-                            file_path = memory.get_file_path(img_id)
-                            if file_path:
-                                user_content.append({
-                                    "type": "image",
-                                    "image": file_path
+                        obs_text, log_entry = await self.search_experiences_tool.call_async(tool_args_dict)
+                        conversation_history.append({
+                            "role": "tool",
+                            "tool_call_id": tool_id,
+                            "content": obs_text,
+                        })
+                        current_experience = obs_text
+                        pending_retrieval_logs.append(log_entry)
+                        if verbose:
+                            logger.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
+                            logger.info(f"   Input: {tool_args}")
+                            logger.info(f"   Output: {obs_text}")
+                        history.append({
+                            "iteration": total_turns,
+                            "action": tool_name,
+                            "action_input": tool_args,
+                            "observation": obs_text,
+                        })
+                        continue
+
+                    # Resolve IDs if memory enabled
+                    original_properties = None
+                    resolved_args_str = tool_args
+                    if memory:
+                        try:
+                            tool_args_dict = json.loads(tool_args) if isinstance(tool_args, str) else tool_args
+                            if isinstance(tool_args_dict, dict):
+                                original_properties = tool_args_dict.copy()
+                                # Special handling: get_images needs IDs, not paths
+                                if tool_name != "get_images":
+                                    resolved_args = memory.resolve_ids(tool_args_dict)
+                                    resolved_args_str = json.dumps(resolved_args)
+                        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
+                            logger.debug(f"Failed to resolve IDs in tool args: {e}")
+
+                    tool_result = self._call_tool(tool_name, resolved_args_str)
+                    _flush_pending_retrieval_logs()
+
+                    # Special handling for get_images tool
+                    if isinstance(tool_result, dict) and "_get_images_ids" in tool_result:
+                        image_ids = tool_result["_get_images_ids"]
+                        observation_text = tool_result.get("message", "Images loaded")
+
+                        # Add tool message with text-only observation
+                        conversation_history.append({
+                            "role": "tool",
+                            "tool_call_id": tool_id,
+                            "content": observation_text
+                        })
+
+                        # Add user message with images
+                        if memory and image_ids:
+                            user_content = []
+                            for img_id in image_ids:
+                                file_path = memory.get_file_path(img_id)
+                                if file_path:
+                                    user_content.append({
+                                        "type": "image",
+                                        "image": file_path
+                                    })
+
+                            if user_content:
+                                conversation_history.append({
+                                    "role": "user",
+                                    "content": user_content
                                 })
-                        
-                        if user_content:
+
+                        # Log to memory
+                        if memory:
+                            memory.log_action(
+                                tool=tool_name,
+                                properties=original_properties or (json.loads(tool_args) if isinstance(tool_args, str) else tool_args),
+                                observation=observation_text,
+                                experience=current_experience,
+                            )
+
+                        # Record history
+                        history.append({
+                            "iteration": total_turns,
+                            "action": tool_name,
+                            "action_input": tool_args,
+                            "observation": observation_text,
+                        })
+
+                        # Update trajectory for state-level retrieval
+                        current_trajectory.append({
+                            "state_index": len(current_trajectory),
+                            "action": {
+                                "thinking": assistant_content or "",
+                                "tool": tool_name,
+                                "parameters": original_properties or {},
+                                "observation": observation_text,
+                            }
+                        })
+                        action_turns += 1
+                        continue
+
+                    traj_observation = None  # clean observation for state-level trajectory
+
+                    if isinstance(tool_result, dict):
+                        output_image = tool_result.get("output_image")
+                        output_video = tool_result.get("output_video")
+
+                        if output_image:
+                            output_object = output_image
+                            output_type = "img"
+                        elif output_video:
+                            output_object = output_video
+                            output_type = "vid"
+                        else:
+                            output_object = None
+                            output_type = None
+
+                        observation_data = {k: v for k, v in tool_result.items()
+                                           if k not in ["output_image", "output_video"]}
+
+                        if output_object:
+                            observation = None
+                        else:
+                            if memory:
+                                observation_data = memory.resolve_paths_to_ids(observation_data)
+                            observation = self._format_observation(observation_data, tool_name)
+
+                    elif isinstance(tool_result, str):
+                        # Legacy string return
+                        observation = tool_result
+                        output_object = None
+                        output_type = None
+                        observation_data = None
+                    else:
+                        # PIL.Image or other object (legacy visualize_regions)
+                        from PIL import Image
+                        if isinstance(tool_result, Image.Image):
+                            output_object = tool_result
+                            output_type = "img"
+                            observation_data = {}
+                            observation = None
+                        else:
+                            observation = str(tool_result)
+                            output_object = None
+                            output_type = None
+                            observation_data = None
+
+                    # Handle output_object (images/videos produced by tools)
+                    if output_object and output_type:
+                        observation_text = None
+                        image_path = None
+                        user_description = None  # Description for user message (without "Saved to memory" prefix)
+
+                        if memory:
+                            # With memory: save to file and generate ID
+                            try:
+                                properties = original_properties if original_properties is not None else (
+                                    json.loads(tool_args) if isinstance(tool_args, str) else tool_args
+                                )
+
+                                # Generate description before logging
+                                from tool.base_tool import TOOL_REGISTRY
+                                tool_instance = TOOL_REGISTRY.get(tool_name)
+                                if tool_instance:
+                                    description = tool_instance().generate_description(
+                                        properties,
+                                        observation_data if isinstance(observation_data, dict) else {}
+                                    )
+                                else:
+                                    description = f"{tool_name} output"
+
+                                # Log action with pre-generated description
+                                output_id = memory.log_action(
+                                    tool=tool_name,
+                                    properties=properties,
+                                    observation=observation_data or {},
+                                    output_object=output_object,
+                                    output_type=output_type,
+                                    description=description,
+                                    experience=current_experience,
+                                )
+
+                                # Format observation text for LLM (with ID reference)
+                                if output_id:
+                                    prefix = "Saved to memory as" if self.enable_memory else "Generated"
+                                    obs_parts = [f"{prefix} {output_id}: {description}"]
+
+                                    # Add non-multimodal data if present (e.g., regions, similarity)
+                                    if observation_data:
+                                        formatted_data = self._format_observation(observation_data, tool_name)
+                                        obs_parts.append(formatted_data)
+
+                                    observation_text = ". ".join(obs_parts) if len(obs_parts) > 1 else obs_parts[0]
+
+                                    # Save description for user message (with ID but without "Saved to memory as")
+                                    user_description = f"{output_id}: {description}"
+                                else:
+                                    observation_text = "Output Saved"
+
+                                # Get image path for user message
+                                if output_type == "img":
+                                    image_path = memory.get_file_path(output_id)
+                                # Note: videos not yet supported
+
+                                observation = observation_text
+                                traj_observation = description
+                            except Exception as e:
+                                if verbose:
+                                    logger.warning(f"Failed to log action to memory: {e}")
+                                observation_text = self._format_observation(observation_data, tool_name) if observation_data else "Output generated"
+                                observation = observation_text
+                        else:
+                            # Without memory: format observation data and prepare image
+                            observation_text = self._format_observation(observation_data, tool_name) if observation_data else "Output generated"
+                            observation = observation_text
+
+                            # Save image to temp file if it's an image
+                            if output_type == "img":
+                                from PIL import Image
+                                import tempfile
+
+                                # Save image to temp file if it's a PIL Image
+                                if isinstance(output_object, Image.Image):
+                                    os.makedirs("temp_images", exist_ok=True)
+                                    temp_file = tempfile.NamedTemporaryFile(
+                                        delete=False,
+                                        suffix=".png",
+                                        dir="temp_images"
+                                    )
+                                    output_object.save(temp_file.name)
+                                    image_path = temp_file.name
+                                else:
+                                    image_path = output_object  # Already a path
+
+                        # Add tool message with text-only observation
+                        conversation_history.append({
+                            "role": "tool",
+                            "tool_call_id": tool_id,
+                            "content": observation_text
+                        })
+
+                        # Add user message with description and image (if available)
+                        if image_path and output_type == "img":
+                            user_content = []
+                            # Add description (without "Saved to memory" prefix)
+                            if user_description:
+                                user_content.append({"type": "text", "text": user_description})
+                            # Add image
+                            user_content.append({"type": "image", "image": image_path})
+
                             conversation_history.append({
                                 "role": "user",
                                 "content": user_content
                             })
-                    
-                    # Log to memory
-                    if memory:
-                        memory.log_action(
-                            tool=tool_name,
-                            properties=original_properties or (json.loads(tool_args) if isinstance(tool_args, str) else tool_args),
-                            observation=observation_text,
-                            experience=current_experience,
-                        )
-                    
-                    # Record history
-                    history.append({
-                        "iteration": iteration + 1,
-                        "action": tool_name,
-                        "action_input": tool_args,
-                        "observation": observation_text,
-                    })
-                    
-                    continue  # Skip normal processing for get_images
-                
-                traj_observation = None  # clean observation for state-level trajectory
-                
-                if isinstance(tool_result, dict):
-                    output_image = tool_result.get("output_image")
-                    output_video = tool_result.get("output_video")
-                    
-                    if output_image:
-                        output_object = output_image
-                        output_type = "img"
-                    elif output_video:
-                        output_object = output_video
-                        output_type = "vid"
-                    else:
-                        output_object = None
-                        output_type = None
-                    
-                    observation_data = {k: v for k, v in tool_result.items() 
-                                       if k not in ["output_image", "output_video"]}
-                    
-                    if output_object:
-                        observation = None
-                    else:
-                        if memory:
-                            observation_data = memory.resolve_paths_to_ids(observation_data)
-                        observation = self._format_observation(observation_data, tool_name)
-                
-                elif isinstance(tool_result, str):
-                    # Legacy string return
-                    observation = tool_result
-                    output_object = None
-                    output_type = None
-                    observation_data = None
-                else:
-                    # PIL.Image or other object (legacy visualize_regions)
-                    from PIL import Image
-                    if isinstance(tool_result, Image.Image):
-                        output_object = tool_result
-                        output_type = "img"
-                        observation_data = {}
-                        observation = None
-                    else:
-                        observation = str(tool_result)
-                        output_object = None
-                        output_type = None
-                        observation_data = None
-                
-                # Handle output_object (images/videos produced by tools)
-                if output_object and output_type:
-                    observation_text = None
-                    image_path = None
-                    user_description = None  # Description for user message (without "Saved to memory" prefix)
-                    
-                    if memory:
-                        # With memory: save to file and generate ID
+
+                    elif memory:
+                        # No output_object, but memory enabled: log text-only action
                         try:
                             properties = original_properties if original_properties is not None else (
                                 json.loads(tool_args) if isinstance(tool_args, str) else tool_args
                             )
-                            
-                            # Generate description before logging
-                            from tool.base_tool import TOOL_REGISTRY
-                            tool_instance = TOOL_REGISTRY.get(tool_name)
-                            if tool_instance:
-                                description = tool_instance().generate_description(
-                                    properties, 
-                                    observation_data if isinstance(observation_data, dict) else {}
-                                )
-                            else:
-                                description = f"{tool_name} output"
-                            
-                            # Log action with pre-generated description
-                            output_id = memory.log_action(
+                            memory.log_action(
                                 tool=tool_name,
                                 properties=properties,
-                                observation=observation_data or {},
-                                output_object=output_object,
-                                output_type=output_type,
-                                description=description,
+                                observation=observation,
                                 experience=current_experience,
                             )
-                            
-                            # Format observation text for LLM (with ID reference)
-                            if output_id:
-                                prefix = "Saved to memory as" if self.enable_memory else "Generated"
-                                obs_parts = [f"{prefix} {output_id}: {description}"]
-                                
-                                # Add non-multimodal data if present (e.g., regions, similarity)
-                                if observation_data:
-                                    formatted_data = self._format_observation(observation_data, tool_name)
-                                    obs_parts.append(formatted_data)
-                                
-                                observation_text = ". ".join(obs_parts) if len(obs_parts) > 1 else obs_parts[0]
-                                
-                                # Save description for user message (with ID but without "Saved to memory as")
-                                user_description = f"{output_id}: {description}"
-                            else:
-                                observation_text = f"Output Saved"
-                            
-                            # Get image path for user message
-                            if output_type == "img":
-                                image_path = memory.get_file_path(output_id)
-                            # Note: videos not yet supported
-                            
-                            observation = observation_text
-                            traj_observation = description
                         except Exception as e:
                             if verbose:
                                 logger.warning(f"Failed to log action to memory: {e}")
-                            observation_text = self._format_observation(observation_data, tool_name) if observation_data else "Output generated"
-                            observation = observation_text
-                    else:
-                        # Without memory: format observation data and prepare image
-                        observation_text = self._format_observation(observation_data, tool_name) if observation_data else "Output generated"
-                        observation = observation_text
-                        
-                        # Save image to temp file if it's an image
-                        if output_type == "img":
-                            from PIL import Image
-                            import tempfile
-                            
-                            # Save image to temp file if it's a PIL Image
-                            if isinstance(output_object, Image.Image):
-                                os.makedirs("temp_images", exist_ok=True)
-                                temp_file = tempfile.NamedTemporaryFile(
-                                    delete=False,
-                                    suffix=".png",
-                                    dir="temp_images"
-                                )
-                                output_object.save(temp_file.name)
-                                image_path = temp_file.name
-                            else:
-                                image_path = output_object  # Already a path
-                    
-                    # Add tool message with text-only observation
-                    conversation_history.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": observation_text
-                    })
-                    
-                    # Add user message with description and image (if available)
-                    if image_path and output_type == "img":
-                        user_content = []
-                        # Add description (without "Saved to memory" prefix)
-                        if user_description:
-                            user_content.append({"type": "text", "text": user_description})
-                        # Add image
-                        user_content.append({"type": "image", "image": image_path})
-                        
+
+                        # Add tool message to conversation history
                         conversation_history.append({
-                            "role": "user",
-                            "content": user_content
+                            "role": "tool",
+                            "tool_call_id": tool_id,
+                            "content": observation
                         })
-                    
-                elif memory:
-                    # No output_object, but memory enabled: log text-only action
-                    try:
-                        properties = original_properties if original_properties is not None else (
-                            json.loads(tool_args) if isinstance(tool_args, str) else tool_args
-                        )
-                        memory.log_action(
-                            tool=tool_name,
-                            properties=properties,
-                            observation=observation,
-                            experience=current_experience,
-                        )
-                    except Exception as e:
-                        if verbose:
-                            logger.warning(f"Failed to log action to memory: {e}")
-                    
-                    # Add tool message to conversation history
-                    conversation_history.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": observation
+                    else:
+                        # No output_object and no memory: add tool message
+                        conversation_history.append({
+                            "role": "tool",
+                            "tool_call_id": tool_id,
+                            "content": observation
+                        })
+
+                    if verbose:
+                        logger.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
+                        logger.info(f"   Input: {tool_args}")
+                        logger.info(f"   Output: {observation}")
+
+                    # Record history
+                    history.append({
+                        "iteration": total_turns,
+                        "action": tool_name,
+                        "action_input": tool_args,
+                        "observation": observation,
                     })
-                else:
-                    # No output_object and no memory: add tool message
-                    conversation_history.append({
-                        "role": "tool",
-                        "tool_call_id": tool_id,
-                        "content": observation
+
+                    # Update trajectory for state-level retrieval
+                    current_trajectory.append({
+                        "state_index": len(current_trajectory),
+                        "action": {
+                            "thinking": assistant_content or "",
+                            "tool": tool_name,
+                            "parameters": original_properties or {},
+                            "observation": traj_observation if traj_observation is not None else (observation or ""),
+                        }
                     })
-                
-                if verbose:
-                    logger.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
-                    logger.info(f"   Input: {tool_args}")
-                    logger.info(f"   Output: {observation}")
-                
-                # Record history
-                history.append({
-                    "iteration": iteration + 1,
-                    "action": tool_name,
-                    "action_input": tool_args,
-                    "observation": observation,
-                })
-                
-                # Update trajectory for state-level retrieval
-                current_trajectory.append({
-                    "state_index": len(current_trajectory),
-                    "action": {
-                        "thinking": assistant_content or "",
-                        "tool": tool_name,
-                        "parameters": original_properties or {},
-                        "observation": traj_observation if traj_observation is not None else (observation or ""),
-                    }
-                })
+                    action_turns += 1
                 
             else:
                 # No tool calls - this is the final answer
                 final_answer = response.get("answer", "")
+                _flush_pending_retrieval_logs()
                 
                 if memory:
                     memory.log_answer(final_answer, experience=current_experience)
@@ -914,7 +931,7 @@ class MultimodalAgent(BasicAgent):
                         shutil.rmtree("temp_images")
                 
                 history.append({
-                    "iteration": iteration + 1,
+                    "iteration": total_turns,
                     "final_response": final_answer,
                 })
                 
@@ -938,8 +955,12 @@ class MultimodalAgent(BasicAgent):
                     return result
                 return final_answer
         
-        final_msg = "Maximum iterations reached without completing the task."
+        if total_turns >= max_total_turns:
+            final_msg = "Safety stop reached before completion."
+        else:
+            final_msg = "Maximum action iterations reached without completing the task."
         logger.warning(final_msg)
+        _flush_pending_retrieval_logs()
         
         if memory:
             memory.end_task(success=False)

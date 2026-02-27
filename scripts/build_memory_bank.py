@@ -105,6 +105,12 @@ async def main():
         default="trace_bank",
         help="Name of the output bank subfolder (default: trace_bank)",
     )
+    parser.add_argument(
+        "--caption_concurrency",
+        type=int,
+        default=8,
+        help="Max concurrent caption generation calls (default: 8)",
+    )
 
     args = parser.parse_args()
 
@@ -113,6 +119,7 @@ async def main():
     logger.info(f"Embedding endpoint: {args.embedding_base_url}")
     logger.info(f"Filter correct only: {not args.no_filter_correct}")
     logger.info(f"Batch size: {args.batch_size}")
+    logger.info(f"Caption concurrency: {args.caption_concurrency}")
     logger.info(f"Bank dir name: {args.bank_dir_name}")
 
     embedder = Embedder(
@@ -143,6 +150,7 @@ async def main():
         api_pool=api_pool,
         filter_correct=not args.no_filter_correct,
         batch_size=args.batch_size,
+        caption_concurrency=args.caption_concurrency,
         bank_dir_name=args.bank_dir_name,
     )
 

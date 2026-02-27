@@ -2,9 +2,10 @@
 """State-level retrieval: StatePipeline end-to-end test.
 
 Covers:
-  - Build state bank from synthetic annotated data (real embeddings)
-  - StatePipeline.retrieve with real embeddings (no rerank)
+  - Build multi-view state bank from synthetic annotated data (real embeddings)
+  - StatePipeline.retrieve(elements) with real embeddings
   - experience_top_n control
+  - Multimodal embedding path (text + image)
 
 Usage:
     python unit_test/state_level/test_pipeline.py \
@@ -14,6 +15,7 @@ Usage:
 
 import argparse
 import asyncio
+import base64
 import json
 import os
 import shutil
@@ -27,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from helpers import CORRECT_TRACES, ok, section
 from config import RetrievalConfig
-from mm_memory.state_bank import StateBank
+from mm_memory.state_bank import ALL_VIEWS, StateBank, available_views, compose_view
 from mm_memory.retrieval.embedder import Embedder
 from mm_memory.retrieval.state_pipeline import StatePipeline
 
@@ -146,12 +148,12 @@ FAKE_TRAJECTORIES = {
 
 
 async def build_test_state_bank(memory_dir: str, embedder: Embedder):
-    """Build a state bank from fake trajectories using real embeddings."""
-    state_texts = []
+    """Build a multi-view state bank from fake trajectories using real embeddings."""
     state_metas = []
+    per_view_indices = {view: [] for view in ALL_VIEWS}
+    per_view_payloads = {view: [] for view in ALL_VIEWS}
 
     for task_id, trajectory in FAKE_TRAJECTORIES.items():
-        # Find matching trace data for state_to_text
         trace_data = next(
             (t for t in CORRECT_TRACES if t["task_id"] == task_id), None
         )
@@ -161,24 +163,45 @@ async def build_test_state_bank(memory_dir: str, embedder: Embedder):
         for entry in trajectory:
             q = entry.get("q_value", 0)
             step = entry["state_index"]
-            text = StateBank.state_to_text(trace_data, trajectory, step)
-            if not text.strip():
-                continue
-            state_texts.append(text)
+            elements = StateBank.state_to_elements(trace_data, trajectory, step)
+            avail = set(available_views(elements))
+            full_text = compose_view(elements, "all").get("text", "")
             state_metas.append({
                 "task_id": task_id,
                 "state": step,
                 "experience": entry.get("experience", ""),
                 "q_value": q,
-                "state_text": text,
+                "state_text": full_text,
+                "elements": elements,
+                "available_views": sorted(list(avail)),
             })
 
-    embeddings = await embedder.encode_batch(state_texts, batch_size=2)
+            meta_idx = len(state_metas) - 1
+            for view in ALL_VIEWS:
+                if view not in avail:
+                    continue
+                per_view_indices[view].append(meta_idx)
+                per_view_payloads[view].append(compose_view(elements, view))
 
     bank_dir = os.path.join(memory_dir, "state_bank")
-    os.makedirs(bank_dir, exist_ok=True)
-    np.save(os.path.join(bank_dir, "embeddings.npy"), embeddings)
-    with open(os.path.join(bank_dir, "state_meta.json"), "w") as f:
+    views_dir = os.path.join(bank_dir, "views")
+    os.makedirs(views_dir, exist_ok=True)
+
+    for view in ALL_VIEWS:
+        payloads = per_view_payloads[view]
+        indices = per_view_indices[view]
+        if not payloads:
+            continue
+        sub_emb = await embedder.encode_view_batch(payloads, batch_size=2)
+        full_emb = np.zeros((len(state_metas), sub_emb.shape[1]), dtype=np.float32)
+        full_mask = np.zeros((len(state_metas),), dtype=bool)
+        for row_i, state_i in enumerate(indices):
+            full_emb[state_i] = sub_emb[row_i]
+            full_mask[state_i] = True
+        np.save(os.path.join(views_dir, f"{view}.npy"), full_emb)
+        np.save(os.path.join(views_dir, f"{view}_mask.npy"), full_mask)
+
+    with open(os.path.join(bank_dir, "state_meta.json"), "w", encoding="utf-8") as f:
         json.dump(state_metas, f, ensure_ascii=False, indent=2)
 
     return StateBank(memory_dir)
@@ -195,49 +218,72 @@ async def test_build_and_retrieve(memory_dir: str, embedder: Embedder):
     expected = sum(len(traj) for traj in FAKE_TRAJECTORIES.values())
     assert len(bank.state_meta) == expected, \
         f"Expected {expected} states, got {len(bank.state_meta)}"
-    ok(f"Built state bank: {len(bank.state_meta)} states, dim={bank.embeddings.shape[1]}")
+    any_view = next(iter(bank.view_embeddings.values()))
+    ok(f"Built state bank: {len(bank.state_meta)} states, dim={any_view.shape[1]}")
 
     # ── 2a. Basic retrieval (top-1) ──
-    section("2. StatePipeline.retrieve")
+    section("2. StatePipeline.retrieve(elements)")
 
     config_a = RetrievalConfig(
         enable=True, mode="state", bank_memory_dir=memory_dir,
-        retrieval_top_k=5, min_q_value=5, min_score=0.01,
+        min_q_value=5, min_score=0.01,
         experience_top_n=1,
     )
     pipeline_a = StatePipeline(config=config_a, state_bank=bank, embedder=embedder)
+    trace_car = next(t for t in CORRECT_TRACES if t["task_id"] == "000001")
+    elements_car = StateBank.state_to_elements(trace_car, FAKE_TRAJECTORIES["000001"], 1)
 
-    exp_a = await pipeline_a.retrieve("What color is the biggest vehicle in the photo?")
+    exp_a = await pipeline_a.retrieve(elements_car)
     assert isinstance(exp_a, str) and len(exp_a) > 0, "experience should not be empty"
-    # top-1 means exactly one "- " prefixed line
-    assert exp_a.count("\n") == 0, "top-1 should return single line"
+    entries_a = [l for l in exp_a.splitlines() if l.startswith("#")]
+    assert len(entries_a) <= 1, f"top-1 should return at most one experience, got {len(entries_a)}"
     ok(f"[a] top-1: \"{exp_a}\"")
 
     # ── 2b. top-3 retrieval ──
     config_b = RetrievalConfig(
         enable=True, mode="state", bank_memory_dir=memory_dir,
-        retrieval_top_k=5, min_q_value=5, min_score=0.01,
+        min_q_value=5, min_score=0.01,
         experience_top_n=3,
     )
     pipeline_b = StatePipeline(config=config_b, state_bank=bank, embedder=embedder)
+    trace_count = next(t for t in CORRECT_TRACES if t["task_id"] == "000002")
+    elements_count = StateBank.state_to_elements(trace_count, FAKE_TRAJECTORIES["000002"], 1)
 
-    exp_b = await pipeline_b.retrieve("How many people are in the image?")
+    exp_b = await pipeline_b.retrieve(elements_count)
     assert isinstance(exp_b, str) and len(exp_b) > 0
-    lines_b = [l for l in exp_b.split("\n") if l.strip()]
-    assert len(lines_b) <= 3, f"top-3 should return at most 3 lines, got {len(lines_b)}"
-    ok(f"[b] top-3: {len(lines_b)} experience lines")
+    entries_b = [l for l in exp_b.splitlines() if l.startswith("#")]
+    assert len(entries_b) <= 3, f"top-3 should return at most 3 experiences, got {len(entries_b)}"
+    ok(f"[b] top-3: {len(entries_b)} experience entries")
 
     # ── 2c. Empty result (extreme thresholds) ──
     config_c = RetrievalConfig(
         enable=True, mode="state", bank_memory_dir=memory_dir,
-        retrieval_top_k=5, min_q_value=10, min_score=0.99,
+        min_q_value=10, min_score=0.99,
         experience_top_n=1,
     )
     pipeline_c = StatePipeline(config=config_c, state_bank=bank, embedder=embedder)
 
-    exp_c = await pipeline_c.retrieve("Something completely unrelated xyz")
+    exp_c = await pipeline_c.retrieve(elements_car)
     assert exp_c == "", "Should return empty string with extreme thresholds"
     ok("[c] Extreme thresholds → empty string")
+
+    # ── 2d. Multimodal embedding path (text + image) ──
+    section("3. Embedder multimodal path")
+    tiny_png_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Zx5kAAAAASUVORK5CYII="
+    )
+    img_path = os.path.join(memory_dir, "tiny_test.png")
+    with open(img_path, "wb") as f:
+        f.write(tiny_png_bytes)
+
+    mm_emb = await embedder.encode_view(
+        {
+            "text": "Question: Which image is similar?",
+            "images": [img_path],
+        }
+    )
+    assert mm_emb.shape[0] == 1 and mm_emb.shape[1] > 0, f"Unexpected multimodal shape: {mm_emb.shape}"
+    ok(f"[d] multimodal encode_view shape={mm_emb.shape}")
 
 
 # ── Main ────────────────────────────────────────────────────────────────────

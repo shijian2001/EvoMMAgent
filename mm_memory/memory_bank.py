@@ -255,6 +255,7 @@ class MemoryBank:
         api_pool=None,
         filter_correct: bool = True,
         batch_size: int = 32,
+        caption_concurrency: int = 8,
         bank_dir_name: str = "trace_bank",
     ) -> "MemoryBank":
         """Build a memory bank from existing traces (offline).
@@ -270,6 +271,7 @@ class MemoryBank:
                       When ``None``, captions are skipped (all empty).
             filter_correct: If True, only include traces with ``is_correct=True``
             batch_size: Batch size for embedding API calls
+            caption_concurrency: Max concurrent caption generation calls
             bank_dir_name: Name of the output subfolder under *memory_dir*.
 
         Returns:
@@ -312,7 +314,6 @@ class MemoryBank:
 
         # Phase 2: Generate captions concurrently (if api_pool provided)
         if api_pool:
-            caption_concurrency = 8
             sem = asyncio.Semaphore(caption_concurrency)
 
             async def _cap(paths: List[str]) -> str:

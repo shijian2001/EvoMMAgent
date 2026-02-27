@@ -29,8 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 
 from api.json_parser import JSONParser
-from mm_memory.memory_bank import MemoryBank
-from mm_memory.state_bank import StateBank
+from mm_memory.state_bank import ALL_VIEWS, StateBank, available_views, compose_view
 from mm_memory.retrieval.embedder import Embedder
 
 logging.basicConfig(
@@ -281,7 +280,7 @@ def build_hindsight_prompt(
     images_note = "The input images are shown above.\n" if image_paths else ""
     type_line = f"\nType: {sub_task}" if sub_task else ""
 
-    if trace_data.get("is_correct", True):
+    if trace_data.get("is_correct", False):
         prompt = _build_correct_prompt(question, images_note, type_line, traj_text)
     else:
         ground_truth = trace_data.get("ground_truth", "")
@@ -431,77 +430,75 @@ async def build_state_bank(
     if not annotated:
         raise ValueError("No traces were successfully annotated")
 
-    # ── Generate one image caption per trace (all input images -> one caption) ──
-    captions_by_task: Dict[str, str] = {}
-
-    async def _caption(task_id: str, trace_data: Dict[str, Any]) -> None:
-        input_images = trace_data.get("input", {}).get("images", [])
-        image_paths = []
-        for img in input_images:
-            if isinstance(img, dict):
-                p = img.get("path")
-            else:
-                p = img
-            if p and os.path.exists(p):
-                image_paths.append(p)
-
-        if not image_paths:
-            captions_by_task[task_id] = ""
-            return
-
-        async with sem:
-            caption = await MemoryBank._generate_caption(api_pool, image_paths)
-        captions_by_task[task_id] = caption or ""
-
-    await asyncio.gather(*[_caption(task_id, trace_data) for task_id, trace_data, _ in annotated])
-    caption_count = sum(1 for c in captions_by_task.values() if c)
-    logger.info(f"Generated captions for {caption_count}/{len(annotated)} traces")
-
     # ── Extract all annotated states (Q-value filtering deferred to retrieval) ──
-    state_texts: List[str] = []
     state_metas: List[Dict[str, Any]] = []
+    per_view_indices: Dict[str, List[int]] = {view: [] for view in ALL_VIEWS}
+    per_view_payloads: Dict[str, List[Dict[str, Any]]] = {view: [] for view in ALL_VIEWS}
 
     for task_id, trace_data, trajectory in annotated:
-        image_caption = captions_by_task.get(task_id, "")
         for entry in trajectory:
             step = entry["state_index"]
-            text = StateBank.state_to_text(
-                trace_data,
-                trajectory,
-                step,
-                image_caption=image_caption,
-            )
-            if not text.strip():
-                continue
-            state_texts.append(text)
+            elements = StateBank.state_to_elements(trace_data, trajectory, step)
+            avail = set(available_views(elements))
+
+            # Keep a full text snapshot for debugging/readability.
+            full_text = compose_view(elements, "all").get("text", "")
+
+            meta_idx = len(state_metas)
             state_metas.append({
                 "task_id": task_id,
                 "state": step,
                 "experience": entry.get("experience", ""),
                 "q_value": entry.get("q_value", 0),
-                "image_caption": image_caption,
-                "state_text": text,
+                "state_text": full_text,
+                "elements": elements,
+                "available_views": sorted(list(avail)),
                 "source": "correct" if trace_data.get("is_correct", True) else "incorrect",
             })
 
-    if not state_texts:
+            for view in ALL_VIEWS:
+                if view not in avail:
+                    continue
+                per_view_indices[view].append(meta_idx)
+                per_view_payloads[view].append(compose_view(elements, view))
+
+    if not state_metas:
         raise ValueError("No states found after annotation")
 
-    logger.info(f"Extracted {len(state_texts)} states")
+    logger.info(f"Extracted {len(state_metas)} states")
 
-    # ── Embed and save ──
-    embeddings = await embedder.encode_batch(state_texts, batch_size=batch_size)
-
+    # ── Embed and save multi-view bank ──
     bank_dir = os.path.join(memory_dir, bank_dir_name)
-    os.makedirs(bank_dir, exist_ok=True)
+    views_dir = os.path.join(bank_dir, "views")
+    os.makedirs(views_dir, exist_ok=True)
 
-    np.save(os.path.join(bank_dir, "embeddings.npy"), embeddings)
+    global_dim: Optional[int] = None
+    for view in ALL_VIEWS:
+        indices = per_view_indices[view]
+        payloads = per_view_payloads[view]
+        if not indices:
+            continue
+
+        logger.info(f"Embedding view {view}: {len(payloads)} states")
+        sub_emb = await embedder.encode_view_batch(payloads, batch_size=batch_size)
+        if global_dim is None:
+            global_dim = sub_emb.shape[1]
+
+        full_emb = np.zeros((len(state_metas), sub_emb.shape[1]), dtype=np.float32)
+        full_mask = np.zeros((len(state_metas),), dtype=bool)
+        for row_i, state_i in enumerate(indices):
+            full_emb[state_i] = sub_emb[row_i]
+            full_mask[state_i] = True
+
+        np.save(os.path.join(views_dir, f"{view}.npy"), full_emb)
+        np.save(os.path.join(views_dir, f"{view}_mask.npy"), full_mask)
+
     with open(os.path.join(bank_dir, "state_meta.json"), "w", encoding="utf-8") as f:
         json.dump(state_metas, f, ensure_ascii=False, indent=2)
 
     logger.info(
         f"State bank saved to {bank_dir}: "
-        f"{len(state_metas)} states, dim={embeddings.shape[1]}"
+        f"{len(state_metas)} states, dim={global_dim if global_dim is not None else 'unknown'}"
     )
 
 

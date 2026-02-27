@@ -55,8 +55,6 @@ class RetrievalConfig:
     embedding_model: str = ""
     embedding_base_url: str = ""
     embedding_api_key: str = ""
-    retrieval_top_k: int = 10
-    
     # Search quality filter (shared)
     min_score: float = 0.1                      # cosine similarity threshold
     
@@ -66,6 +64,7 @@ class RetrievalConfig:
     rerank_base_url: str = ""
     rerank_api_key: str = ""
     rerank_top_n: int = 3
+    retrieval_top_k: int = 10
     enable_query_rewrite: bool = True
     max_sub_queries: int = 5
     max_retrieval_rounds: int = 1               # 1=single, 2+=multi-round
@@ -73,6 +72,7 @@ class RetrievalConfig:
     # === State mode settings ===
     min_q_value: int = 7                        # Q-value filter threshold
     experience_top_n: int = 1                   # number of experiences to inject per step
+    max_epoch: int = 1                          # max retrieval rounds per state
 
 
 @dataclass

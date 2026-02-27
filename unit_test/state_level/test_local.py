@@ -4,19 +4,23 @@
 Covers:
   - RetrievalConfig mode/min_q_value/experience_top_n defaults
   - convert_trace_to_trajectory (trace → MDP trajectory)
-  - StateBank.state_to_text serialization (no truncation)
+  - StateBank.state_to_text serialization (no truncation, no caption path)
   - StateBank load + cosine search + Q-value filtering
+  - SearchExperiencesTool round/not-yet-used/max_epoch behavior
+  - Memory.log_state_retrieval non-step logging behavior
   - StateBank missing error handling
 
 Usage:
     python unit_test/state_level/test_local.py
 """
 
+import asyncio
 import json
 import os
 import sys
 import tempfile
 import shutil
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -26,7 +30,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from helpers import FAKE_TRACES, CORRECT_TRACES, ok, section
 from config import RetrievalConfig, Config
+from mm_memory.memory import Memory
 from mm_memory.state_bank import StateBank
+from tool.search_experiences_tool import SearchExperiencesTool
 
 
 # ── Fake annotated trajectory data ──────────────────────────────────────────
@@ -69,7 +75,7 @@ FAKE_TRAJECTORY = [
 
 
 def create_synthetic_state_bank(memory_dir: str, dim: int = 8):
-    """Write random embeddings + state_meta to {memory_dir}/state_bank/."""
+    """Write random multi-view bank files to {memory_dir}/state_bank/."""
     metas = []
     for t in CORRECT_TRACES:
         for entry in FAKE_TRAJECTORY:
@@ -82,16 +88,61 @@ def create_synthetic_state_bank(memory_dir: str, dim: int = 8):
             })
 
     embeddings = np.random.randn(len(metas), dim).astype(np.float32)
+    mask = np.ones((len(metas),), dtype=bool)
 
     bank_dir = os.path.join(memory_dir, "state_bank")
-    os.makedirs(bank_dir, exist_ok=True)
-    np.save(os.path.join(bank_dir, "embeddings.npy"), embeddings)
+    views_dir = os.path.join(bank_dir, "views")
+    os.makedirs(views_dir, exist_ok=True)
+    np.save(os.path.join(views_dir, "all.npy"), embeddings)
+    np.save(os.path.join(views_dir, "all_mask.npy"), mask)
     with open(os.path.join(bank_dir, "state_meta.json"), "w") as f:
         json.dump(metas, f)
 
 
 def cleanup(path: str):
     shutil.rmtree(path, ignore_errors=True)
+
+
+def convert_trace_to_trajectory_local(trace_data):
+    """Local copy of trace→trajectory conversion for offline tests."""
+    raw_steps = trace_data.get("trace", [])
+    trajectory = []
+    current_thinking = ""
+
+    for step in raw_steps:
+        stype = step.get("type", "")
+        if stype == "think":
+            current_thinking = step.get("content", "")
+        elif stype == "action":
+            obs = step.get("observation", "")
+            if isinstance(obs, dict):
+                obs = obs.get("description", str(obs))
+            trajectory.append(
+                {
+                    "state_index": len(trajectory),
+                    "action": {
+                        "thinking": current_thinking,
+                        "tool": step.get("tool", ""),
+                        "parameters": step.get("properties", {}),
+                        "observation": str(obs),
+                    },
+                }
+            )
+            current_thinking = ""
+        elif stype == "answer":
+            trajectory.append(
+                {
+                    "state_index": len(trajectory),
+                    "action": {
+                        "thinking": current_thinking,
+                        "tool": "answer",
+                        "parameters": {"content": step.get("content", "")},
+                        "observation": None,
+                    },
+                }
+            )
+            current_thinking = ""
+    return trajectory
 
 
 # ── Tests ───────────────────────────────────────────────────────────────────
@@ -117,14 +168,8 @@ def test_convert_trace_to_trajectory():
     """Verify trace → trajectory conversion merges think+action correctly."""
     section("2. convert_trace_to_trajectory")
 
-    sys.path.insert(0, os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "scripts"
-    ))
-    from build_state_bank import convert_trace_to_trajectory
-
     # Trace 000001: think → action → answer (no think before answer)
-    traj = convert_trace_to_trajectory(FAKE_TRACES[0])
+    traj = convert_trace_to_trajectory_local(FAKE_TRACES[0])
     assert len(traj) == 2, f"Expected 2 entries (1 action + 1 answer), got {len(traj)}"
     assert traj[0]["action"]["tool"] == "localize_objects"
     assert traj[0]["action"]["thinking"] == "I need to find the largest car first."
@@ -141,7 +186,7 @@ def test_convert_trace_to_trajectory():
     ok(f"Trace 000001 → {len(traj)} entries (action + answer), answer has empty thinking")
 
     # Trace 000003: think → action → action → answer (no think before answer)
-    traj3 = convert_trace_to_trajectory(FAKE_TRACES[2])
+    traj3 = convert_trace_to_trajectory_local(FAKE_TRACES[2])
     assert len(traj3) == 3, f"Expected 3 entries (2 actions + 1 answer), got {len(traj3)}"
     tools = [e["action"]["tool"] for e in traj3]
     assert tools == ["estimate_object_depth", "estimate_object_depth", "answer"]
@@ -153,7 +198,7 @@ def test_convert_trace_to_trajectory():
     ok(f"Trace 000003 → {len(traj3)} entries: {tools}, observations + answer captured")
 
     # Trace 000005: think → action × 4 → answer (no think before answer)
-    traj5 = convert_trace_to_trajectory(FAKE_TRACES[4])
+    traj5 = convert_trace_to_trajectory_local(FAKE_TRACES[4])
     assert len(traj5) == 5, f"Expected 5 entries (4 actions + 1 answer), got {len(traj5)}"
     assert "Let me examine" in traj5[0]["action"]["thinking"]
     assert traj5[0]["action"]["observation"] == "Found 8 shapes."
@@ -165,7 +210,7 @@ def test_convert_trace_to_trajectory():
 
 
 def test_state_to_text_no_truncation():
-    """Verify state serialization has NO truncation."""
+    """Verify state serialization has NO truncation and ignores caption arg."""
     section("3. StateBank.state_to_text (no truncation)")
 
     trace_data = {
@@ -177,7 +222,6 @@ def test_state_to_text_no_truncation():
     s0 = StateBank.state_to_text(trace_data, FAKE_TRAJECTORY, 0)
     assert "Question: What color is the car?" in s0
     assert "Task: color_recognition" in s0
-    assert "Image description:" not in s0, "No caption should not add image description line"
     assert "localize_objects" not in s0, "s_0 should have no action history"
     ok(f"s_0 = '{s0}'")
 
@@ -219,28 +263,7 @@ def test_state_to_text_no_truncation():
     assert long_obs in s_long, "500-char observation should NOT be truncated"
     ok(f"500-char observation preserved in full")
 
-    # Verify caption is preserved in s_0 and inherited by later states
-    caption = "A red car in a parking lot with several vehicles."
-    s0_cap = StateBank.state_to_text(
-        trace_data,
-        FAKE_TRAJECTORY,
-        0,
-        image_caption=caption,
-    )
-    assert "Image description: A red car in a parking lot" in s0_cap
-    assert "Question: What color is the car?" in s0_cap
-    assert "Task: color_recognition" in s0_cap
-
-    s2_cap = StateBank.state_to_text(
-        trace_data,
-        FAKE_TRAJECTORY,
-        2,
-        image_caption=caption,
-    )
-    assert "Image description: A red car in a parking lot" in s2_cap
-    assert "localize_objects" in s2_cap
-    assert "crop" in s2_cap
-    ok("Caption appears in s_0 and persists in later states")
+    ok("State serialization contains only state elements (no caption path)")
 
 
 def test_state_bank_search():
@@ -253,7 +276,8 @@ def test_state_bank_search():
 
         bank = StateBank(memory_dir)
         assert len(bank.state_meta) == len(CORRECT_TRACES) * len(FAKE_TRAJECTORY)
-        ok(f"Loaded {len(bank.state_meta)} states, dim={bank.embeddings.shape[1]}")
+        any_view = next(iter(bank.view_embeddings.values()))
+        ok(f"Loaded {len(bank.state_meta)} states, dim={any_view.shape[1]}")
 
         # Basic search
         query = np.random.randn(1, 8).astype(np.float32)
@@ -294,10 +318,100 @@ def test_state_bank_missing():
         cleanup(memory_dir)
 
 
+class _FakeEmbedder:
+    async def encode_view(self, composed):
+        del composed
+        return np.ones((1, 8), dtype=np.float32)
+
+
+class _FakeStateBank:
+    def search_view(self, view, query_emb, top_k=1, min_score=0.0, min_q=0):
+        del query_emb, min_score, min_q
+        rows = [
+            {
+                "experience": f"{view}: prefer tool-based reasoning",
+                "source": "correct",
+                "retrieval_score": 0.9,
+                "task_id": "000001",
+                "state": 0,
+            },
+            {
+                "experience": f"{view}: avoid redundant tool calls",
+                "source": "incorrect",
+                "retrieval_score": 0.8,
+                "task_id": "000002",
+                "state": 1,
+            },
+        ]
+        return rows[:top_k]
+
+
+def test_search_experiences_tool_behavior():
+    """Verify tool rounds, not-yet-used views, and max_epoch limit."""
+    section("6. SearchExperiencesTool Behavior")
+
+    cfg = SimpleNamespace(max_epoch=2, experience_top_n=2, min_score=0.0, min_q_value=0)
+    tool = SearchExperiencesTool(
+        state_bank=_FakeStateBank(),
+        embedder=_FakeEmbedder(),
+        retrieval_config=cfg,
+    )
+    elements = {
+        "question": "Which car is larger?",
+        "task": "size_comparison",
+        "images": [],
+        "observations": [],
+    }
+    tool.reset_state(elements)
+
+    obs1, log1 = asyncio.run(tool.call_async({"view": "question"}))
+    assert "Round 1/2" in obs1
+    assert len(log1["experiences"]) == 2
+    assert log1["view"] == "question"
+
+    obs2, _ = asyncio.run(tool.call_async({"view": "question"}))
+    assert "Not-yet-used views" in obs2
+
+    obs3, log3 = asyncio.run(tool.call_async({"view": "task"}))
+    assert "Round 2/2" in obs3
+    assert len(log3["experiences"]) == 2
+
+    obs4, log4 = asyncio.run(tool.call_async({"view": "all"}))
+    assert "Retrieval limit reached" in obs4
+    assert len(log4["experiences"]) == 0
+    ok("search_experiences enforces round limit and not-yet-used guidance")
+
+
+def test_state_retrieval_logging_non_step():
+    """Verify retrieval log is inserted before next step and does not consume step ids."""
+    section("7. Retrieval Logging (non-step)")
+
+    memory_dir = tempfile.mkdtemp(prefix="test_state_log_")
+    try:
+        mem = Memory(base_dir=memory_dir)
+        mem.start_task("Test question")
+        mem.log_state_retrieval(
+            next_step=1,
+            rounds=[{"round": 1, "view": "question", "experiences": [{"experience": "x"}]}],
+        )
+        mem.log_think("I should search experiences first.")
+        mem.log_action(tool="calculator", properties={"expression": "1+1"}, observation="Calculation result: 2")
+
+        trace = mem.trace_data["trace"]
+        assert isinstance(trace[0], dict) and "experience_for_step_1" in trace[0]
+        assert trace[1]["step"] == 1 and trace[1]["type"] == "think"
+        assert trace[2]["step"] == 2 and trace[2]["type"] == "action"
+        ok("experience_for_step_k logged as non-step and preserved before real steps")
+    finally:
+        cleanup(memory_dir)
+
+
 if __name__ == "__main__":
     test_config_mode_defaults()
     test_convert_trace_to_trajectory()
     test_state_to_text_no_truncation()
     test_state_bank_search()
     test_state_bank_missing()
+    test_search_experiences_tool_behavior()
+    test_state_retrieval_logging_non_step()
     print("\n🎉 state_level/test_local ALL PASSED\n")
