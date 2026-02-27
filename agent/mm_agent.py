@@ -308,6 +308,7 @@ class MultimodalAgent(BasicAgent):
             system_prompt: str,
             conversation_history: List[Dict[str, Any]],
             tools: Optional[List[Dict]] = None,
+            tool_choice: Optional[Union[str, Dict]] = None,
     ) -> Dict[str, Any]:
         """Call the LLM using the API pool.
         
@@ -315,16 +316,19 @@ class MultimodalAgent(BasicAgent):
             system_prompt: System prompt string
             conversation_history: List of messages in OpenAI format with roles (user/assistant/tool)
             tools: Optional list of tool definitions
+            tool_choice: Override tool_choice (defaults to "auto"/"none")
             
         Returns:
             Dict with answer, tool_calls (if any), and other metadata
         """
+        if tool_choice is None:
+            tool_choice = "auto" if tools else "none"
         result = await self.api_pool.execute(
             "qa",
             system=system_prompt,
             messages=conversation_history,
             tools=tools,
-            tool_choice="auto" if tools else "none",
+            tool_choice=tool_choice,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
         )
@@ -481,6 +485,7 @@ class MultimodalAgent(BasicAgent):
         state_experience: Optional[str] = None
         pending_retrieval_logs: List[Dict[str, Any]] = []
         retrieval_state_index = -1
+        force_search = False
 
         action_turns = 0
         total_turns = 0
@@ -508,6 +513,7 @@ class MultimodalAgent(BasicAgent):
                     )
                     self.search_experiences_tool.reset_state(state_elements)
                     retrieval_state_index = state_index
+                    force_search = True
             
             # Clean old images from history (keep only most recent tool message images)
             # Only clean when memory is enabled, as images can be retrieved via get_images
@@ -544,7 +550,10 @@ class MultimodalAgent(BasicAgent):
                         else:
                             logger.info(f"   [{idx}] role={role}")
                 
-                response = await self._call_llm(system_prompt, conversation_history, tools_schema)
+                tc = None
+                if force_search and self.search_experiences_tool and tools_schema:
+                    tc = {"type": "function", "function": {"name": "search_experiences"}}
+                response = await self._call_llm(system_prompt, conversation_history, tools_schema, tool_choice=tc)
                 
                 if verbose:
                     logger.info(f"\n📤 LLM RESPONSE:")
@@ -606,6 +615,7 @@ class MultimodalAgent(BasicAgent):
                         })
                         state_experience = obs_text
                         pending_retrieval_logs.append(log_entry)
+                        force_search = False
                         if verbose:
                             logger.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
                             logger.info(f"   Input: {tool_args}")
