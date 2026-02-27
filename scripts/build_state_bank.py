@@ -480,6 +480,7 @@ async def build_state_bank(
                 "q_value": entry.get("q_value", 0),
                 "image_caption": image_caption,
                 "state_text": text,
+                "source": "correct" if trace_data.get("is_correct", True) else "incorrect",
             })
 
     if not state_texts:
