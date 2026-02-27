@@ -30,10 +30,15 @@
 
 未显示的图像保存在记忆系统中。你可以使用 get_images 配合图像 ID 来查看它们。支持查看单张或多张图像。
 {% endif %}
-{% if experience %}
+{% if has_state_retrieval %}
+
+## 经验检索
+每次行动前，考虑调用 `search_experiences` 检索相似已解决任务的建议。选择与当前信息需求最匹配的视角，如需更广泛的指导可用不同视角多次调用。
+{% endif %}
+{% if trace_experience %}
 
 ## 来自相似任务的经验
 以下经验来源于已解决的相似任务。请作为参考，而非严格规则。
 
-{{ experience }}
+{{ trace_experience }}
 {% endif %}

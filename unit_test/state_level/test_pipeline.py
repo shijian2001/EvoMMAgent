@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""State-level retrieval: StatePipeline end-to-end test.
+"""State-level retrieval end-to-end test.
 
 Covers:
   - Build multi-view state bank from synthetic annotated data (real embeddings)
-  - StatePipeline.retrieve(elements) with real embeddings
+  - SearchExperiencesTool.call_async() with real embeddings
   - experience_top_n control
   - Multimodal embedding path (text + image)
 
@@ -31,7 +31,7 @@ from helpers import CORRECT_TRACES, ok, section
 from config import RetrievalConfig
 from mm_memory.state_bank import ALL_VIEWS, StateBank, available_views, compose_view
 from mm_memory.retrieval.embedder import Embedder
-from mm_memory.retrieval.state_pipeline import StatePipeline
+from tool.search_experiences_tool import SearchExperiencesTool
 
 
 # ── Fake annotated trajectory ───────────────────────────────────────────────
@@ -210,7 +210,7 @@ async def build_test_state_bank(memory_dir: str, embedder: Embedder):
 # ── Tests ───────────────────────────────────────────────────────────────────
 
 async def test_build_and_retrieve(memory_dir: str, embedder: Embedder):
-    """Build state bank with real embeddings, then test retrieval."""
+    """Build state bank with real embeddings, then test retrieval via SearchExperiencesTool."""
     section("1. Build state bank (real embeddings)")
 
     bank = await build_test_state_bank(memory_dir, embedder)
@@ -221,51 +221,56 @@ async def test_build_and_retrieve(memory_dir: str, embedder: Embedder):
     any_view = next(iter(bank.view_embeddings.values()))
     ok(f"Built state bank: {len(bank.state_meta)} states, dim={any_view.shape[1]}")
 
-    # ── 2a. Basic retrieval (top-1) ──
-    section("2. StatePipeline.retrieve(elements)")
+    # ── 2a. Basic retrieval (top-1) via SearchExperiencesTool ──
+    section("2. SearchExperiencesTool.call_async()")
 
     config_a = RetrievalConfig(
         enable=True, mode="state", bank_memory_dir=memory_dir,
         min_q_value=5, min_score=0.01,
-        experience_top_n=1,
+        experience_top_n=1, max_epoch=3,
     )
-    pipeline_a = StatePipeline(config=config_a, state_bank=bank, embedder=embedder)
+    tool_a = SearchExperiencesTool(state_bank=bank, embedder=embedder, retrieval_config=config_a)
+
     trace_car = next(t for t in CORRECT_TRACES if t["task_id"] == "000001")
     elements_car = StateBank.state_to_elements(trace_car, FAKE_TRAJECTORIES["000001"], 1)
+    tool_a.reset_state(elements_car)
 
-    exp_a = await pipeline_a.retrieve(elements_car)
-    assert isinstance(exp_a, str) and len(exp_a) > 0, "experience should not be empty"
-    entries_a = [l for l in exp_a.splitlines() if l.startswith("#")]
-    assert len(entries_a) <= 1, f"top-1 should return at most one experience, got {len(entries_a)}"
-    ok(f"[a] top-1: \"{exp_a}\"")
+    obs_a, log_a = await tool_a.call_async({"view": "question"})
+    assert isinstance(obs_a, str) and len(obs_a) > 0, "observation should not be empty"
+    assert "Round 1/" in obs_a, f"Expected Round 1/ in observation, got: {obs_a[:200]}"
+    assert log_a["view"] == "question"
+    ok(f"[a] top-1 observation: {obs_a[:120]}...")
 
     # ── 2b. top-3 retrieval ──
     config_b = RetrievalConfig(
         enable=True, mode="state", bank_memory_dir=memory_dir,
         min_q_value=5, min_score=0.01,
-        experience_top_n=3,
+        experience_top_n=3, max_epoch=3,
     )
-    pipeline_b = StatePipeline(config=config_b, state_bank=bank, embedder=embedder)
+    tool_b = SearchExperiencesTool(state_bank=bank, embedder=embedder, retrieval_config=config_b)
+
     trace_count = next(t for t in CORRECT_TRACES if t["task_id"] == "000002")
     elements_count = StateBank.state_to_elements(trace_count, FAKE_TRAJECTORIES["000002"], 1)
+    tool_b.reset_state(elements_count)
 
-    exp_b = await pipeline_b.retrieve(elements_count)
-    assert isinstance(exp_b, str) and len(exp_b) > 0
-    entries_b = [l for l in exp_b.splitlines() if l.startswith("#")]
-    assert len(entries_b) <= 3, f"top-3 should return at most 3 experiences, got {len(entries_b)}"
-    ok(f"[b] top-3: {len(entries_b)} experience entries")
+    obs_b, log_b = await tool_b.call_async({"view": "question"})
+    assert isinstance(obs_b, str) and len(obs_b) > 0
+    n_entries = obs_b.count("#")
+    assert n_entries <= 3, f"top-3 should return at most 3 entries, got {n_entries}"
+    ok(f"[b] top-3: {n_entries} experience entries in observation")
 
     # ── 2c. Empty result (extreme thresholds) ──
     config_c = RetrievalConfig(
         enable=True, mode="state", bank_memory_dir=memory_dir,
         min_q_value=10, min_score=0.99,
-        experience_top_n=1,
+        experience_top_n=1, max_epoch=3,
     )
-    pipeline_c = StatePipeline(config=config_c, state_bank=bank, embedder=embedder)
+    tool_c = SearchExperiencesTool(state_bank=bank, embedder=embedder, retrieval_config=config_c)
+    tool_c.reset_state(elements_car)
 
-    exp_c = await pipeline_c.retrieve(elements_car)
-    assert exp_c == "", "Should return empty string with extreme thresholds"
-    ok("[c] Extreme thresholds → empty string")
+    obs_c, log_c = await tool_c.call_async({"view": "question"})
+    assert "No relevant experiences" in obs_c, f"Expected empty result with extreme thresholds, got: {obs_c[:200]}"
+    ok("[c] Extreme thresholds → no relevant experiences")
 
     # ── 2d. Multimodal embedding path (text + image) ──
     section("3. Embedder multimodal path")

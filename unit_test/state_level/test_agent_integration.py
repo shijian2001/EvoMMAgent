@@ -187,7 +187,7 @@ def _build_agent_skeleton(
     agent.search_experiences_tool = search_tool
     agent.tool_bank["search_experiences"] = search_tool
 
-    agent.retrieval_pipeline = None
+    agent.trace_pipeline = None  # act() checks this; must exist even in state-only mode
 
     agent.api_pool = AsyncMock()
 

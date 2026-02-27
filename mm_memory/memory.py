@@ -173,7 +173,7 @@ class Memory:
         output_object: Optional[Any] = None,
         output_type: str = "img",
         description: Optional[str] = None,
-        experience: Optional[str] = None,
+        state_experience: Optional[str] = None,
     ) -> Optional[str]:
         """Log an action step.
         
@@ -184,7 +184,7 @@ class Memory:
             output_object: Optional multimodal object (PIL.Image, video path, etc.)
             output_type: Type of output (img, vid)
             description: Optional pre-generated description for multimodal output
-            experience: Optional retrieved experience that guided this action
+            state_experience: Optional state-level retrieval observation that guided this action
             
         Returns:
             output_id: Reference ID of output if created, else None
@@ -228,8 +228,8 @@ class Memory:
             "properties": properties,
             "observation": observation,
         }
-        if experience:
-            entry["experience"] = experience
+        if state_experience:
+            entry["state_experience"] = state_experience
         self.trace_data["trace"].append(entry)
         
         return output_id
@@ -287,12 +287,12 @@ class Memory:
             import logging
             logging.error(f"Failed to save output object {output_id}: {e}")
     
-    def log_answer(self, content: str, experience: Optional[str] = None):
+    def log_answer(self, content: str, state_experience: Optional[str] = None):
         """Log final answer.
         
         Args:
             content: Answer content
-            experience: Optional retrieved experience that guided this answer
+            state_experience: Optional state-level retrieval observation that guided this answer
         """
         step = self._next_step()
         entry = {
@@ -300,8 +300,8 @@ class Memory:
             "type": "answer",
             "content": content,
         }
-        if experience:
-            entry["experience"] = experience
+        if state_experience:
+            entry["state_experience"] = state_experience
         self.trace_data["trace"].append(entry)
         self.trace_data["answer"] = content
 

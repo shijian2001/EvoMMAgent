@@ -126,7 +126,6 @@ mm_memory/
 └── retrieval/
     ├── __init__.py
     ├── trace_pipeline.py       # TracePipeline: trace-level 流程编排
-    ├── state_pipeline.py       # StatePipeline: state-level 检索
     ├── query_rewriter.py       # QueryRewriter: LLM 多模态改写 (trace mode)
     ├── embedder.py             # Embedder: vLLM /v1/embeddings (shared)
     └── reranker.py             # Reranker: vLLM /v1/rerank (trace mode)

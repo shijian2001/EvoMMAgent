@@ -69,7 +69,8 @@ unit_test/
 │   └── test_pipeline.py    # 完整 TracePipeline (需 LLM API)
 └── state_level/            # State-level (状态级) 检索测试
     ├── test_local.py       # StateBank、state_to_text、config mode
-    └── test_pipeline.py    # StatePipeline end-to-end (需 Embedder)
+    ├── test_pipeline.py    # State retrieval end-to-end (需 Embedder)
+    └── test_agent_integration.py  # search_experiences tool 在 agent loop 中的集成测试
 ```
 
 ---
@@ -145,7 +146,7 @@ python unit_test/state_level/test_local.py
 | StateBank 加载+搜索 | 合成 embedding → cosine search + Q-value 过滤 | 返回 top-k，Q < min_q 被过滤 |
 | StateBank 缺失处理 | 无 state_bank/ 目录 | 抛出 FileNotFoundError |
 
-### test_pipeline.py — StatePipeline 端到端（需要 Embedder 服务）
+### test_pipeline.py — State retrieval 端到端（需要 Embedder 服务）
 
 ```bash
 python unit_test/state_level/test_pipeline.py \
@@ -156,8 +157,8 @@ python unit_test/state_level/test_pipeline.py \
 | 测试项 | 逻辑 | 预期 |
 |--------|------|------|
 | Build state bank | 用真实 embedding 构建 state bank | 生成正确数量的 state，文件持久化 |
-| StatePipeline.retrieve (top-1) | embed → cosine search → 取 top-1 experience | 返回单行非空 experience |
-| StatePipeline.retrieve (top-3) | experience_top_n=3 | 返回 ≤3 行 experience |
+| State retrieval (top-1) | embed → cosine search → 取 top-1 experience | 返回单行非空 experience |
+| State retrieval (top-3) | experience_top_n=3 | 返回 ≤3 行 experience |
 | 极端阈值 | min_q=10, min_score=0.99 | 返回空字符串 |
 
 ---
