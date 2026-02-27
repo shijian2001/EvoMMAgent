@@ -95,23 +95,8 @@ def convert_trace_to_trajectory(trace_data: Dict[str, Any]) -> List[Dict[str, An
 # Hindsight annotation (LLM)
 # ---------------------------------------------------------------------------
 
-def build_hindsight_prompt(
-    trace_data: Dict[str, Any], trajectory: List[Dict[str, Any]]
-) -> Tuple[str, List[str]]:
-    """Build prompt for LLM to annotate Q-values and experiences.
-
-    Returns:
-        Tuple of (prompt_text, image_paths) where image_paths may be empty.
-    """
-    question = trace_data.get("input", {}).get("question", "")
-    answer = trace_data.get("answer", "")
-    sub_task = trace_data.get("sub_task", "")
-    # Collect input image paths (if any)
-    image_paths = [
-        img["path"] for img in trace_data.get("input", {}).get("images", [])
-        if isinstance(img, dict) and img.get("path")
-    ]
-
+def _build_trajectory_text(trajectory: List[Dict[str, Any]]) -> str:
+    """Render trajectory entries into human-readable text."""
     traj_lines = [
         "State s_0:\n  - The question and input images shown above."
     ]
@@ -140,15 +125,13 @@ def build_hindsight_prompt(
         if idx + 1 < len(trajectory):
             traj_lines.append(f"State s_{idx + 1}")
 
-    traj_text = "\n\n".join(traj_lines)
+    return "\n\n".join(traj_lines)
 
-    images_note = (
-        "The input images are shown above.\n"
-        if image_paths else ""
-    )
-    type_line = f"\nType: {sub_task}" if sub_task else ""
 
-    prompt = f"""\
+def _build_correct_prompt(
+    question: str, images_note: str, type_line: str, traj_text: str,
+) -> str:
+    return f"""\
 You are evaluating a complete agent reasoning trace. The task was solved CORRECTLY.
 The process may be highly efficient, or it may contain wasteful, redundant, or
 error-prone steps. Judge each step by the quality and relevance of its output.
@@ -206,6 +189,105 @@ Output JSON array:
   {{"state": 0, "q_value": 8, "experience": "..."}},
   ...
 ]"""
+
+
+def _build_incorrect_prompt(
+    question: str, images_note: str, type_line: str, traj_text: str,
+    ground_truth: str,
+) -> str:
+    gt_line = f"\nCorrect answer: {ground_truth}" if ground_truth else ""
+    return f"""\
+You are evaluating a complete agent reasoning trace. The task was solved INCORRECTLY.{gt_line}
+
+Judge each step INDEPENDENTLY on its own merits — a wrong final answer does NOT
+mean every step was bad. Many steps may have been perfectly reasonable; focus on
+identifying which specific steps introduced errors, ignored evidence, or led the
+reasoning astray.
+
+## Task
+{images_note}Question: {question}{type_line}
+
+## Trajectory
+The initial state s_0 is the question and images above. Each subsequent state
+is what the agent has seen so far, including all previous actions and observations.
+
+{traj_text}
+
+## Instructions
+For each (state, action) pair, provide:
+
+1. q_value (0-10): Rate the quality of this action at this state.
+   Judge each step by whether it produced accurate, relevant information.
+   Pay special attention to steps that introduced errors or ignored
+   available evidence, leading to the incorrect final answer.
+   - 9-10: Essential — produced decisive information that directly shaped
+           the answer, or answered correctly at the right time
+   - 7-8: Helpful — useful output that advanced the solution, with minor
+           room for improvement in tool choice or parameters
+   - 5-6: Reasonable — valid approach, but the output had little actual
+           influence on the final answer; a more direct path existed
+   - 3-4: Wasteful — produced no new information, duplicated prior knowledge,
+           or was an unnecessary detour
+   - 0-2: Harmful — produced errors, misleading output, or repeated a
+           known failure
+
+2. experience (1-2 sentences): Actionable advice that a FUTURE agent would see
+   BEFORE making this decision. This advice will be injected into the agent's
+   context at runtime to guide its next action.
+   Guidelines:
+   - Reference the task type and tool strategy, but keep the advice
+     generalizable — do not mention specific objects, labels, or values
+     from this particular trace
+   - Focus on STRATEGY: recommend the specific tool and approach that works
+     for this task type, or advise answering directly if tools are unnecessary
+   - If the step was an error, redundant, or unnecessary, the experience
+     MUST be cautionary — warn against this approach rather than endorsing it
+   - NEVER mention or hint at the correct answer
+   Good: "For visual similarity tasks, use get_image2images_similarity to get
+          objective scores rather than estimating visually."
+   Good: "The observation already contains enough information to answer directly.
+          No further tool calls are needed."
+   Good: "Avoid calling additional tools — the current observations already
+          provide sufficient evidence to answer directly."
+   Bad:  "The agent should use the right tool." (too vague)
+   Bad:  "The answer is likely A based on the scores." (leaks answer)
+
+Output JSON array:
+[
+  {{"state": 0, "q_value": 8, "experience": "..."}},
+  ...
+]"""
+
+
+def build_hindsight_prompt(
+    trace_data: Dict[str, Any], trajectory: List[Dict[str, Any]]
+) -> Tuple[str, List[str]]:
+    """Build prompt for LLM to annotate Q-values and experiences.
+
+    Selects correct/incorrect prompt variant based on ``trace_data["is_correct"]``.
+
+    Returns:
+        Tuple of (prompt_text, image_paths) where image_paths may be empty.
+    """
+    question = trace_data.get("input", {}).get("question", "")
+    sub_task = trace_data.get("sub_task", "")
+    image_paths = [
+        img["path"] for img in trace_data.get("input", {}).get("images", [])
+        if isinstance(img, dict) and img.get("path")
+    ]
+
+    traj_text = _build_trajectory_text(trajectory)
+    images_note = "The input images are shown above.\n" if image_paths else ""
+    type_line = f"\nType: {sub_task}" if sub_task else ""
+
+    if trace_data.get("is_correct", True):
+        prompt = _build_correct_prompt(question, images_note, type_line, traj_text)
+    else:
+        ground_truth = trace_data.get("ground_truth", "")
+        prompt = _build_incorrect_prompt(
+            question, images_note, type_line, traj_text, ground_truth,
+        )
+
     return prompt, image_paths
 
 
@@ -274,25 +356,33 @@ async def build_state_bank(
     memory_dir: str,
     api_pool,
     embedder: Embedder,
-    min_q: int = 5,
     batch_size: int = 32,
     concurrency: int = 8,
+    trace_mode: str = "both",
 ) -> None:
     """Full pipeline: scan traces → annotate → embed → save state_bank/.
 
     Original trace.json files are never modified.
+
+    Args:
+        trace_mode: Which traces to include — "correct", "incorrect", or "both".
+            "incorrect" requires ``ground_truth`` field in trace.json.
     """
     tasks_dir = os.path.join(memory_dir, "tasks")
     if not os.path.exists(tasks_dir):
         raise FileNotFoundError(f"Tasks directory not found: {tasks_dir}")
 
-    # Scan correct traces
     task_dirs = sorted(
         d for d in os.listdir(tasks_dir)
         if os.path.isdir(os.path.join(tasks_dir, d))
     )
 
-    traces: List[Tuple[str, Dict[str, Any]]] = []  # (task_id, trace_data)
+    want_correct = trace_mode in ("correct", "both")
+    want_incorrect = trace_mode in ("incorrect", "both")
+
+    traces: List[Tuple[str, Dict[str, Any]]] = []
+    n_correct = 0
+    n_incorrect = 0
     for task_id in task_dirs:
         trace_path = os.path.join(tasks_dir, task_id, "trace.json")
         if not os.path.exists(trace_path):
@@ -302,11 +392,18 @@ async def build_state_bank(
                 trace = json.load(f)
         except (json.JSONDecodeError, OSError):
             continue
-        if not trace.get("is_correct", False):
-            continue
-        traces.append((task_id, trace))
+        is_correct = trace.get("is_correct", False)
+        if is_correct and want_correct:
+            n_correct += 1
+            traces.append((task_id, trace))
+        elif not is_correct and want_incorrect:
+            n_incorrect += 1
+            traces.append((task_id, trace))
 
-    logger.info(f"Found {len(traces)} correct traces")
+    logger.info(
+        f"Found {n_correct} correct + {n_incorrect} incorrect = {len(traces)} traces "
+        f"(mode={trace_mode})"
+    )
 
     # ── Annotate concurrently (in memory) ──
     sem = asyncio.Semaphore(concurrency)
@@ -357,16 +454,13 @@ async def build_state_bank(
     caption_count = sum(1 for c in captions_by_task.values() if c)
     logger.info(f"Generated captions for {caption_count}/{len(annotated)} traces")
 
-    # ── Extract states with Q >= min_q ──
+    # ── Extract all annotated states (Q-value filtering deferred to retrieval) ──
     state_texts: List[str] = []
     state_metas: List[Dict[str, Any]] = []
 
     for task_id, trace_data, trajectory in annotated:
         image_caption = captions_by_task.get(task_id, "")
         for entry in trajectory:
-            q = entry.get("q_value", 0)
-            if q < min_q:
-                continue
             step = entry["state_index"]
             text = StateBank.state_to_text(
                 trace_data,
@@ -381,15 +475,15 @@ async def build_state_bank(
                 "task_id": task_id,
                 "state": step,
                 "experience": entry.get("experience", ""),
-                "q_value": q,
+                "q_value": entry.get("q_value", 0),
                 "image_caption": image_caption,
                 "state_text": text,
             })
 
     if not state_texts:
-        raise ValueError(f"No states with Q >= {min_q} found")
+        raise ValueError("No states found after annotation")
 
-    logger.info(f"Extracted {len(state_texts)} states (Q >= {min_q})")
+    logger.info(f"Extracted {len(state_texts)} states")
 
     # ── Embed and save ──
     embeddings = await embedder.encode_batch(state_texts, batch_size=batch_size)
@@ -452,12 +546,13 @@ async def main():
         help="API key for the embedding service (default: dummy)",
     )
     parser.add_argument(
-        "--min_q", type=int, default=5,
-        help="Minimum Q-value to include a state (default: 5)",
-    )
-    parser.add_argument(
         "--batch_size", type=int, default=32,
         help="Batch size for embedding API calls (default: 32)",
+    )
+    parser.add_argument(
+        "--mode", type=str, default="both",
+        choices=["correct", "incorrect", "both"],
+        help="Which traces to include (default: both)",
     )
 
     args = parser.parse_args()
@@ -465,7 +560,7 @@ async def main():
     logger.info(f"Memory dir: {args.memory_dir}")
     logger.info(f"LLM: {args.llm_model}")
     logger.info(f"Embedding: {args.embedding_model}")
-    logger.info(f"Min Q-value: {args.min_q}")
+    logger.info(f"Trace mode: {args.mode}")
 
     from api.async_pool import APIPool
     api_pool = APIPool(
@@ -485,9 +580,9 @@ async def main():
         memory_dir=args.memory_dir,
         api_pool=api_pool,
         embedder=embedder,
-        min_q=args.min_q,
         batch_size=args.batch_size,
         concurrency=args.concurrency,
+        trace_mode=args.mode,
     )
 
     logger.info("Done!")

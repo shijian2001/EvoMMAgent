@@ -198,12 +198,14 @@ class Runner:
         
         return dataset
     
-    def _update_trace_correctness(self, dataset_id: str, is_correct: bool):
-        """Update trace.json with is_correct field.
+    def _update_trace_correctness(self, dataset_id: str, is_correct: bool,
+                                   ground_truth: str = ""):
+        """Update trace.json with is_correct and ground_truth fields.
         
         Args:
             dataset_id: Dataset sample idx
             is_correct: Whether the answer is correct
+            ground_truth: Ground truth answer from the dataset
         """
         memory_dir = self.agent_config.get("memory_dir")
         if not memory_dir:
@@ -213,7 +215,6 @@ class Runner:
         if not memory_path.exists():
             return
         
-        # Find and update trace
         for task_folder in memory_path.iterdir():
             if task_folder.is_dir():
                 trace_file = task_folder / "trace.json"
@@ -224,6 +225,8 @@ class Runner:
                         
                         if str(trace_data.get("dataset_id")) == str(dataset_id):
                             trace_data["is_correct"] = is_correct
+                            if ground_truth:
+                                trace_data["ground_truth"] = ground_truth
                             with open(trace_file, 'w', encoding='utf-8') as f:
                                 json.dump(trace_data, f, indent=2, ensure_ascii=False)
                             break
@@ -306,9 +309,11 @@ class Runner:
                 "dataset": sample.get('dataset', ''),
             }
             
-            # If memory is enabled, update trace with is_correct
             if self.use_tools and self.agent_config.get("memory_dir"):
-                self._update_trace_correctness(sample['idx'], is_correct)
+                self._update_trace_correctness(
+                    sample['idx'], is_correct,
+                    ground_truth=sample.get('answer', ''),
+                )
             
             return result_dict
             
