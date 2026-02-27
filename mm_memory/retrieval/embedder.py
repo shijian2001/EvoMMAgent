@@ -121,6 +121,8 @@ class Embedder:
         for path in valid_paths:
             from PIL import Image
             img = Image.open(path)
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
             buf = BytesIO()
             img.save(buf, format="JPEG")
             img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
