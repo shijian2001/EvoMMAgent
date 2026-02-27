@@ -109,7 +109,7 @@ def main():
     parser.add_argument(
         "--split",
         type=str,
-        default="validation",
+        default="test",
         choices=["dev", "validation", "test"],
         help="Dataset split to process (default: validation)",
     )
