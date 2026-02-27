@@ -192,6 +192,7 @@ class StateBank:
         top_indices = np.argsort(-scores, kind='stable')[:k]
 
         results = []
+        seen_tasks: Set[str] = set()
         for idx in top_indices:
             if not self.view_masks[view][idx]:
                 continue
@@ -199,11 +200,15 @@ class StateBank:
             if score < min_score:
                 break  # sorted desc
             meta = self.state_meta[idx]
-            key = (str(meta.get("task_id", "")), int(meta.get("state", -1)))
+            task_id = str(meta.get("task_id", ""))
+            key = (task_id, int(meta.get("state", -1)))
             if key in exclude_ids:
                 continue
             if meta.get("q_value", 0) < min_q:
                 continue
+            if task_id and task_id in seen_tasks:
+                continue
+            seen_tasks.add(task_id)
             result = dict(meta)
             result["retrieval_score"] = score
             result["view"] = view
