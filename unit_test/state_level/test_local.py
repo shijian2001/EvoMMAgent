@@ -21,12 +21,22 @@ import sys
 import tempfile
 import shutil
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import numpy as np
 
 # Paths
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+# Stub heavy dependencies for lightweight test environments
+for _mod_name in (
+    "torch", "torchvision", "torchvision.transforms",
+    "torchvision.transforms.functional", "transformers",
+    "PIL", "PIL.Image",
+    "openai", "dotenv", "qwen_vl_utils", "jsonschema",
+):
+    sys.modules.setdefault(_mod_name, MagicMock())
 
 from helpers import FAKE_TRACES, CORRECT_TRACES, ok, section
 from config import RetrievalConfig, Config
