@@ -199,10 +199,10 @@ def _build_incorrect_prompt(
     return f"""\
 You are evaluating a complete agent reasoning trace. The task was solved INCORRECTLY.{gt_line}
 
-Judge each step INDEPENDENTLY on its own merits — a wrong final answer does NOT
-mean every step was bad. Many steps may have been perfectly reasonable; focus on
-identifying which specific steps introduced errors, ignored evidence, or led the
-reasoning astray.
+Your goal is to identify which steps were most responsible for the incorrect outcome.
+A wrong final answer does NOT mean every step was bad — many steps may have been
+perfectly reasonable. Focus on pinpointing the critical steps that introduced errors,
+ignored evidence, or led the reasoning astray.
 
 ## Task
 {images_note}Question: {question}{type_line}
@@ -216,40 +216,41 @@ is what the agent has seen so far, including all previous actions and observatio
 ## Instructions
 For each (state, action) pair, provide:
 
-1. q_value (0-10): Rate the quality of this action at this state.
-   Judge each step by whether it produced accurate, relevant information.
-   Pay special attention to steps that introduced errors or ignored
-   available evidence, leading to the incorrect final answer.
-   - 9-10: Essential — produced decisive information that directly shaped
-           the answer, or answered correctly at the right time
-   - 7-8: Helpful — useful output that advanced the solution, with minor
-           room for improvement in tool choice or parameters
-   - 5-6: Reasonable — valid approach, but the output had little actual
-           influence on the final answer; a more direct path existed
-   - 3-4: Wasteful — produced no new information, duplicated prior knowledge,
-           or was an unnecessary detour
-   - 0-2: Harmful — produced errors, misleading output, or repeated a
-           known failure
+1. q_value (0-10): Rate how much this step CONTRIBUTED TO the incorrect outcome.
+   A high score means this step was a critical cause of the error — it introduced
+   wrong information, ignored available evidence, or misled subsequent reasoning.
+   A low score means this step was irrelevant to the failure (neutral or even
+   reasonable on its own).
+   - 9-10: Critical error — this step directly caused or cemented the wrong
+           answer (e.g. misread evidence, wrong tool, flawed conclusion)
+   - 7-8: Significant — substantially misled the reasoning, even if not the
+           sole cause of failure
+   - 5-6: Moderate — somewhat contributed to the error, but other steps were
+           more decisive
+   - 3-4: Minor — had little impact on the incorrect outcome; the step was
+           mostly neutral
+   - 0-2: Irrelevant — this step was reasonable and did not contribute to
+           the failure at all
 
 2. experience (1-2 sentences): Actionable advice that a FUTURE agent would see
    BEFORE making this decision. This advice will be injected into the agent's
    context at runtime to guide its next action.
    Guidelines:
+   - For high q_value steps (critical errors): the experience MUST be a
+     cautionary warning — explain what went wrong and what to avoid
+   - For low q_value steps (irrelevant to failure): provide brief neutral or
+     positive guidance if appropriate
    - Reference the task type and tool strategy, but keep the advice
      generalizable — do not mention specific objects, labels, or values
      from this particular trace
-   - Focus on STRATEGY: recommend the specific tool and approach that works
-     for this task type, or advise answering directly if tools are unnecessary
-   - If the step was an error, redundant, or unnecessary, the experience
-     MUST be cautionary — warn against this approach rather than endorsing it
    - NEVER mention or hint at the correct answer
-   Good: "For visual similarity tasks, use get_image2images_similarity to get
-          objective scores rather than estimating visually."
-   Good: "The observation already contains enough information to answer directly.
-          No further tool calls are needed."
-   Good: "Avoid calling additional tools — the current observations already
-          provide sufficient evidence to answer directly."
-   Bad:  "The agent should use the right tool." (too vague)
+   Good: "For this task type, do not rely on visual estimation alone — use
+          get_image2images_similarity for objective comparison."
+   Good: "When observations conflict with prior reasoning, re-examine the
+          evidence before committing to an answer."
+   Good: "Avoid repeating the same tool call when it has already returned
+          a clear result — analyze existing observations instead."
+   Bad:  "The agent should be more careful." (too vague)
    Bad:  "The answer is likely A based on the scores." (leaks answer)
 
 Output JSON array:

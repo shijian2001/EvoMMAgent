@@ -50,14 +50,32 @@ class StatePipeline:
         if not candidates:
             return ""
 
-        # Take top-n pre-computed experiences (no rerank, no LLM)
-        experiences = []
-        for c in candidates[: self.config.experience_top_n]:
+        # Take top-n and format with source labels
+        entries = []
+        for i, c in enumerate(candidates[: self.config.experience_top_n], 1):
             exp = c.get("experience", "")
-            if exp:
-                experiences.append(exp)
+            if not exp:
+                continue
+            source = c.get("source", "correct")
+            tag = "Learned from success" if source == "correct" else "Learned from failure"
+            entries.append(f"#{i} [{tag}]\n{exp}")
 
-        return "\n".join(experiences)
+        if not entries:
+            return ""
+
+        if len(entries) == 1:
+            preamble = (
+                "The following experience is retrieved from a similar reasoning state.\n"
+                "Use your own judgment to decide whether to follow it."
+            )
+        else:
+            preamble = (
+                f"The following {len(entries)} experiences are retrieved from similar "
+                f"reasoning states, ranked by relevance.\n"
+                "Use your own judgment to decide how to incorporate them."
+            )
+
+        return preamble + "\n\n" + "\n\n".join(entries)
 
     async def close(self) -> None:
         """Release resources (no-op for state pipeline)."""
