@@ -350,11 +350,11 @@ def test_reset_state_on_trajectory_change():
         search_calls = [h for h in result["history"] if h.get("action") == "search_experiences"]
         assert len(search_calls) == 2
         for sc in search_calls:
-            assert "Round 1/" in sc["observation"], (
+            assert "Experiences from similar reasoning states" in sc["observation"], (
                 f"Second search_experiences('question') should succeed after reset, got: {sc['observation']}"
             )
 
-        ok(f"reset_state called {len(reset_calls)} times; both search('question') returned Round 1")
+        ok(f"reset_state called {len(reset_calls)} times; both search('question') succeeded after reset")
     finally:
         shutil.rmtree(memory_dir, ignore_errors=True)
 
@@ -381,10 +381,10 @@ def test_max_epoch_enforced_in_loop():
             h["observation"] for h in result["history"] if h.get("action") == "search_experiences"
         ]
         assert len(search_obs) == 2
-        assert "Round 1/1" in search_obs[0]
+        assert "Experiences from similar reasoning states" in search_obs[0]
         assert "Retrieval limit reached" in search_obs[1]
 
-        ok(f"1st search: Round 1/1; 2nd search: limit reached")
+        ok(f"1st search: experiences returned; 2nd search: limit reached")
     finally:
         shutil.rmtree(memory_dir, ignore_errors=True)
 

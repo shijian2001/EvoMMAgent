@@ -237,7 +237,7 @@ async def test_build_and_retrieve(memory_dir: str, embedder: Embedder):
 
     obs_a, log_a = await tool_a.call_async({"view": "question"})
     assert isinstance(obs_a, str) and len(obs_a) > 0, "observation should not be empty"
-    assert "Round 1/" in obs_a, f"Expected Round 1/ in observation, got: {obs_a[:200]}"
+    assert "Experiences from similar reasoning states" in obs_a, f"Expected header in observation, got: {obs_a[:200]}"
     assert log_a["view"] == "question"
     ok(f"[a] top-1 observation: {obs_a[:120]}...")
 

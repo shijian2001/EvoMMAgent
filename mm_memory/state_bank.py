@@ -189,7 +189,7 @@ class StateBank:
 
         # Top-K indices (over-fetch to allow multiple filters)
         k = min(top_k * _OVER_FETCH_FACTOR, len(self.state_meta))
-        top_indices = np.argsort(scores)[::-1][:k]
+        top_indices = np.argsort(-scores, kind='stable')[:k]
 
         results = []
         for idx in top_indices:

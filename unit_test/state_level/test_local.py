@@ -375,7 +375,7 @@ def test_search_experiences_tool_behavior():
     tool.reset_state(elements)
 
     obs1, log1 = asyncio.run(tool.call_async({"view": "question"}))
-    assert "Round 1/2" in obs1
+    assert "Experiences from similar reasoning states" in obs1
     assert len(log1["experiences"]) == 2
     assert log1["view"] == "question"
 
@@ -383,7 +383,7 @@ def test_search_experiences_tool_behavior():
     assert "Not-yet-used views" in obs2
 
     obs3, log3 = asyncio.run(tool.call_async({"view": "task"}))
-    assert "Round 2/2" in obs3
+    assert "Experiences from similar reasoning states" in obs3
     assert len(log3["experiences"]) == 2
 
     obs4, log4 = asyncio.run(tool.call_async({"view": "all"}))

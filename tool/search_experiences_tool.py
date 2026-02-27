@@ -136,7 +136,11 @@ class SearchExperiencesTool(BasicTool):
         remaining: List[str],
         is_final: bool,
     ) -> str:
-        header = f"[Experiences from similar reasoning states — Round {round_index}/{max_epoch}]"
+        header = (
+            "[Experiences from similar reasoning states]\n"
+            "Ranked by relevance. Critically evaluate whether these experiences "
+            "are helpful for making a good decision."
+        )
 
         entries: List[str] = []
         for i, c in enumerate(candidates, 1):
@@ -161,9 +165,8 @@ class SearchExperiencesTool(BasicTool):
                 remaining_items.append(f"- {v}: {desc}" if desc else f"- {v}")
             remaining_block = "\n".join(remaining_items) if remaining_items else "(none)"
             footer = (
-                "Evaluate whether you now have enough confidence to make a good decision. "
-                "If yes, proceed with your action or answer. "
-                "If not, call search_experiences with a not-yet-used view:\n"
+                "Consider searching with a different view for additional insights "
+                "before acting. Not-yet-used views:\n"
                 f"{remaining_block}"
             )
 
