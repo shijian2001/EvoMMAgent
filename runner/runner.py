@@ -353,28 +353,31 @@ class Runner:
             logger.info(f"Batch {batch_id}: Processing {len(samples)} samples")
             logger.info(f"{'='*80}")
         
-        # Use pre-created agent pool (no need to create new agents)
-        # Semaphore for concurrency control
-        semaphore = asyncio.Semaphore(self.max_concurrent)
         completed = 0
         total = len(samples)
-        
-        async def run_with_semaphore(sample: Dict, agent: MultimodalAgent):
+
+        # Agent queue: each task borrows an agent and returns it when done.
+        # This guarantees no two concurrent tasks share the same agent instance,
+        # avoiding race conditions on stateful components (e.g. search_experiences_tool).
+        agent_queue: asyncio.Queue[MultimodalAgent] = asyncio.Queue()
+        for a in self.agents:
+            agent_queue.put_nowait(a)
+
+        async def run_with_agent(sample: Dict):
             nonlocal completed
-            async with semaphore:
+            agent = await agent_queue.get()
+            try:
                 result = await self.run_single_task(sample, agent)
                 completed += 1
                 if self.verbose:
                     status = "✅" if result["is_correct"] else "❌"
                     logger.info(f"{status} [{completed}/{total}] Sample {result['idx']}: {result['predicted']}")
                 return result
-        
-        # Run all tasks with agent cycling (reuse agent pool)
-        from itertools import cycle
-        agent_cycle = cycle(self.agents)
+            finally:
+                agent_queue.put_nowait(agent)
+
         results = await asyncio.gather(*[
-            run_with_semaphore(sample, next(agent_cycle))
-            for sample in samples
+            run_with_agent(sample) for sample in samples
         ])
         
         if self.verbose:

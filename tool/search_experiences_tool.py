@@ -161,8 +161,9 @@ class SearchExperiencesTool(BasicTool):
                 remaining_items.append(f"- {v}: {desc}" if desc else f"- {v}")
             remaining_block = "\n".join(remaining_items) if remaining_items else "(none)"
             footer = (
-                "If guidance is sufficient, proceed with your action or answer.\n"
-                "Otherwise, call search_experiences again with a not-yet-used view:\n"
+                "Evaluate whether you now have enough confidence to make a good decision. "
+                "If yes, proceed with your action or answer. "
+                "If not, call search_experiences with a not-yet-used view:\n"
                 f"{remaining_block}"
             )
 
