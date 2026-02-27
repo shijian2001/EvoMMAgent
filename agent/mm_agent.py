@@ -183,7 +183,10 @@ class MultimodalAgent(BasicAgent):
                     api_key=rc.rerank_api_key or "dummy",
                 )
             
-            memory_bank = MemoryBank(rc.bank_memory_dir)
+            memory_bank = MemoryBank(
+                rc.bank_memory_dir,
+                bank_dir_name=rc.bank_dir_name or "trace_bank",
+            )
             query_rewriter = None
             if rc.enable_query_rewrite:
                 query_rewriter = QueryRewriter(
@@ -204,7 +207,10 @@ class MultimodalAgent(BasicAgent):
             from mm_memory.state_bank import StateBank
             from mm_memory.retrieval.state_pipeline import StatePipeline
             
-            state_bank = StateBank(rc.bank_memory_dir)
+            state_bank = StateBank(
+                rc.bank_memory_dir,
+                bank_dir_name=rc.bank_dir_name or "state_bank",
+            )
             self.retrieval_pipeline = StatePipeline(
                 config=rc,
                 state_bank=state_bank,

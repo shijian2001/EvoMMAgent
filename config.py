@@ -49,6 +49,7 @@ class RetrievalConfig:
     
     # Memory bank: points to the training memory dir (trace_bank/ or state_bank/ lives inside it)
     bank_memory_dir: str = ""
+    bank_dir_name: str = ""                      # override bank subfolder name (default: trace_bank / state_bank)
     
     # Embedding Retrieval (vLLM deployed, shared by both modes)
     embedding_model: str = ""

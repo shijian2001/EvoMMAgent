@@ -30,17 +30,18 @@ CAPTION_PROMPT = (
 class MemoryBank:
     """Search index over existing memory traces."""
 
-    def __init__(self, memory_dir: str):
-        """Load a pre-built bank from ``{memory_dir}/trace_bank/``.
+    def __init__(self, memory_dir: str, bank_dir_name: str = "trace_bank"):
+        """Load a pre-built bank from ``{memory_dir}/{bank_dir_name}/``.
 
         Args:
-            memory_dir: Root memory directory containing ``tasks/`` and ``trace_bank/``
+            memory_dir: Root memory directory containing ``tasks/`` and the bank subfolder.
+            bank_dir_name: Name of the bank subfolder (default ``trace_bank``).
 
         Raises:
             FileNotFoundError: If bank files do not exist
         """
         self.memory_dir = memory_dir
-        bank_dir = os.path.join(memory_dir, "trace_bank")
+        bank_dir = os.path.join(memory_dir, bank_dir_name)
 
         task_ids_path = os.path.join(bank_dir, "task_ids.json")
         embeddings_path = os.path.join(bank_dir, "embeddings.npy")
@@ -254,12 +255,13 @@ class MemoryBank:
         api_pool=None,
         filter_correct: bool = True,
         batch_size: int = 32,
+        bank_dir_name: str = "trace_bank",
     ) -> "MemoryBank":
         """Build a memory bank from existing traces (offline).
 
         Scans ``{memory_dir}/tasks/*/trace.json``, filters, optionally
         generates image captions via *api_pool*, computes embeddings,
-        and saves the bank to ``{memory_dir}/trace_bank/``.
+        and saves the bank to ``{memory_dir}/{bank_dir_name}/``.
 
         Args:
             memory_dir: Root memory directory
@@ -268,6 +270,7 @@ class MemoryBank:
                       When ``None``, captions are skipped (all empty).
             filter_correct: If True, only include traces with ``is_correct=True``
             batch_size: Batch size for embedding API calls
+            bank_dir_name: Name of the output subfolder under *memory_dir*.
 
         Returns:
             The built MemoryBank instance
@@ -359,7 +362,7 @@ class MemoryBank:
         embeddings = await embedder.encode_batch(texts, batch_size=batch_size)
 
         # Save
-        bank_dir = os.path.join(memory_dir, "trace_bank")
+        bank_dir = os.path.join(memory_dir, bank_dir_name)
         os.makedirs(bank_dir, exist_ok=True)
 
         np.save(os.path.join(bank_dir, "embeddings.npy"), embeddings)
@@ -373,4 +376,4 @@ class MemoryBank:
             f"{len(task_ids)} entries, dim={embeddings.shape[1]}"
         )
 
-        return cls(memory_dir)
+        return cls(memory_dir, bank_dir_name=bank_dir_name)

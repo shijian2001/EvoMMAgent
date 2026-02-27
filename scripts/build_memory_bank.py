@@ -99,6 +99,12 @@ async def main():
         default="",
         help="API key for the VLM service",
     )
+    parser.add_argument(
+        "--bank_dir_name",
+        type=str,
+        default="trace_bank",
+        help="Name of the output bank subfolder (default: trace_bank)",
+    )
 
     args = parser.parse_args()
 
@@ -107,6 +113,7 @@ async def main():
     logger.info(f"Embedding endpoint: {args.embedding_base_url}")
     logger.info(f"Filter correct only: {not args.no_filter_correct}")
     logger.info(f"Batch size: {args.batch_size}")
+    logger.info(f"Bank dir name: {args.bank_dir_name}")
 
     embedder = Embedder(
         model_name=args.embedding_model,
@@ -136,6 +143,7 @@ async def main():
         api_pool=api_pool,
         filter_correct=not args.no_filter_correct,
         batch_size=args.batch_size,
+        bank_dir_name=args.bank_dir_name,
     )
 
     logger.info(

@@ -19,17 +19,18 @@ logger = logging.getLogger(__name__)
 class StateBank:
     """State-level search index over hindsight-annotated trajectories."""
 
-    def __init__(self, memory_dir: str):
-        """Load a pre-built state bank from ``{memory_dir}/state_bank/``.
+    def __init__(self, memory_dir: str, bank_dir_name: str = "state_bank"):
+        """Load a pre-built state bank from ``{memory_dir}/{bank_dir_name}/``.
 
         Args:
-            memory_dir: Root memory directory containing ``tasks/`` and ``state_bank/``
+            memory_dir: Root memory directory containing ``tasks/`` and the bank subfolder.
+            bank_dir_name: Name of the bank subfolder (default ``state_bank``).
 
         Raises:
             FileNotFoundError: If state bank files do not exist
         """
         self.memory_dir = memory_dir
-        bank_dir = os.path.join(memory_dir, "state_bank")
+        bank_dir = os.path.join(memory_dir, bank_dir_name)
 
         meta_path = os.path.join(bank_dir, "state_meta.json")
         embeddings_path = os.path.join(bank_dir, "embeddings.npy")

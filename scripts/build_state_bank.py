@@ -359,14 +359,16 @@ async def build_state_bank(
     batch_size: int = 32,
     concurrency: int = 8,
     trace_mode: str = "both",
+    bank_dir_name: str = "state_bank",
 ) -> None:
-    """Full pipeline: scan traces → annotate → embed → save state_bank/.
+    """Full pipeline: scan traces → annotate → embed → save ``{bank_dir_name}/``.
 
     Original trace.json files are never modified.
 
     Args:
         trace_mode: Which traces to include — "correct", "incorrect", or "both".
             "incorrect" requires ``ground_truth`` field in trace.json.
+        bank_dir_name: Name of the output subfolder under *memory_dir*.
     """
     tasks_dir = os.path.join(memory_dir, "tasks")
     if not os.path.exists(tasks_dir):
@@ -488,7 +490,7 @@ async def build_state_bank(
     # ── Embed and save ──
     embeddings = await embedder.encode_batch(state_texts, batch_size=batch_size)
 
-    bank_dir = os.path.join(memory_dir, "state_bank")
+    bank_dir = os.path.join(memory_dir, bank_dir_name)
     os.makedirs(bank_dir, exist_ok=True)
 
     np.save(os.path.join(bank_dir, "embeddings.npy"), embeddings)
@@ -554,6 +556,10 @@ async def main():
         choices=["correct", "incorrect", "both"],
         help="Which traces to include (default: both)",
     )
+    parser.add_argument(
+        "--bank_dir_name", type=str, default="state_bank",
+        help="Name of the output bank subfolder (default: state_bank)",
+    )
 
     args = parser.parse_args()
 
@@ -561,6 +567,7 @@ async def main():
     logger.info(f"LLM: {args.llm_model}")
     logger.info(f"Embedding: {args.embedding_model}")
     logger.info(f"Trace mode: {args.mode}")
+    logger.info(f"Bank dir name: {args.bank_dir_name}")
 
     from api.async_pool import APIPool
     api_pool = APIPool(
@@ -583,6 +590,7 @@ async def main():
         batch_size=args.batch_size,
         concurrency=args.concurrency,
         trace_mode=args.mode,
+        bank_dir_name=args.bank_dir_name,
     )
 
     logger.info("Done!")
