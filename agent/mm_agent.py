@@ -300,9 +300,6 @@ class MultimodalAgent(BasicAgent):
             has_state_retrieval=bool(self.search_experiences_tool),
         )
         
-        if self.search_experiences_tool:
-            logger.info(f"[state-retrieval] prompt guidance present: {'Experience Retrieval' in system_prompt}")
-        
         return system_prompt
     
     
@@ -322,7 +319,7 @@ class MultimodalAgent(BasicAgent):
         Returns:
             Dict with answer, tool_calls (if any), and other metadata
         """
-        # Use the unified qa method from API pool with new signature
+        logger.info(f"[debug] tools sent to LLM: {[t['function']['name'] for t in (tools or [])]}")
         result = await self.api_pool.execute(
             "qa",
             system=system_prompt,
@@ -611,8 +608,9 @@ class MultimodalAgent(BasicAgent):
                         state_experience = obs_text
                         pending_retrieval_logs.append(log_entry)
                         if verbose:
-                            logger.info(f"\n🔍 search_experiences: view={tool_args_dict.get('view')}, round={log_entry.get('round')}")
-                            logger.info(f"   Output: {obs_text[:200]}")
+                            logger.info(f"\n🔧 TOOL EXECUTION: {tool_name}")
+                            logger.info(f"   Input: {tool_args}")
+                            logger.info(f"   Output: {obs_text}")
                         history.append({
                             "iteration": total_turns,
                             "action": tool_name,
