@@ -84,7 +84,8 @@ async def main():
     #     "retrieval": {
     #         "enable": True,
     #         "mode": "trace",
-    #         "bank_memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260210/retrieve_exp/meta_train/blink/qwen3vl_32b/w_tool",  # dir with tasks/ and trace_bank/
+    #         "bank_memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260210/retrieve_exp/meta_train/blink/qwen3vl_32b/w_tool",
+    #         "bank_dir_name": "trace_bank",              # subfolder under bank_memory_dir (default: trace_bank)
     #         "embedding_model": "qwen3vl-embed",
     #         "embedding_base_url": "http://localhost:8001/v1",
     #         "trace_top_n": 1,
@@ -118,12 +119,13 @@ async def main():
     #         "enable": True,
     #         "mode": "state",
     #         "bank_memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp_20250228/meta_train/vstar/qwen3vl_32b/w_tool",
+    #         "bank_dir_name": "state_bank",              # subfolder under bank_memory_dir (default: state_bank)
     #         "embedding_model": "qwen3vl-embed",
     #         "embedding_base_url": "http://localhost:8001/v1",
     #         "min_score": 0.1,
-    #         "max_epoch": 3,                              
-    #         "min_q_value": 5, 
-    #         "experience_top_n": 3,                           
+    #         "max_epoch": 3,
+    #         "min_q_value": 5,
+    #         "experience_top_n": 3,
     #     },
     # }
     
