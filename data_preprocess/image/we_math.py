@@ -175,7 +175,7 @@ def main():
     parser.add_argument(
         "--num_proc",
         type=int,
-        default=8,
+        default=64,
         help="Number of processes for parallel processing",
     )
     args = parser.parse_args()

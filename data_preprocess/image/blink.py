@@ -120,7 +120,7 @@ def main():
     parser.add_argument("input_dir", type=str, help="Path to BLINK dataset directory")
     parser.add_argument("--jsonl_path", type=str, required=True, help="Output JSONL file path")
     parser.add_argument("--image_dir", type=str, required=True, help="Output image folder path")
-    parser.add_argument("--num_proc", type=int, default=8, help="Number of processes for parallel processing")
+    parser.add_argument("--num_proc", type=int, default=64, help="Number of processes for parallel processing")
     args = parser.parse_args()
     
     dataset = load_dataset(args.input_dir)
