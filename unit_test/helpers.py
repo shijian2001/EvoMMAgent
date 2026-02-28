@@ -113,18 +113,16 @@ def create_fake_memory_dir() -> str:
 
 
 def create_synthetic_bank(memory_dir: str, dim: int = 8):
-    """Write random embeddings + task_ids + captions to {memory_dir}/trace_bank/."""
-    task_ids = [t["task_id"] for t in CORRECT_TRACES]
-    embeddings = np.random.randn(len(task_ids), dim).astype(np.float32)
-    captions = [""] * len(task_ids)
+    """Write random embeddings + experiences to {memory_dir}/trace_bank/."""
+    n = len(CORRECT_TRACES)
+    embeddings = np.random.randn(n, dim).astype(np.float32)
+    experiences = [f"Experience {i}" for i in range(n)]
 
     bank_dir = os.path.join(memory_dir, "trace_bank")
     os.makedirs(bank_dir, exist_ok=True)
     np.save(os.path.join(bank_dir, "embeddings.npy"), embeddings)
-    with open(os.path.join(bank_dir, "task_ids.json"), "w") as f:
-        json.dump(task_ids, f)
-    with open(os.path.join(bank_dir, "captions.json"), "w") as f:
-        json.dump(captions, f)
+    with open(os.path.join(bank_dir, "experiences.json"), "w") as f:
+        json.dump(experiences, f)
 
 
 def cleanup(path: str):

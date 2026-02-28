@@ -160,10 +160,8 @@ class MultimodalAgent(BasicAgent):
     def _init_trace_pipeline(self, rc) -> None:
         """Initialize trace-level retrieval pipeline."""
         from mm_memory.retrieval.embedder import Embedder
-        from mm_memory.retrieval.reranker import Reranker
-        from mm_memory.memory_bank import MemoryBank
+        from mm_memory.trace_bank import TraceBank
         from mm_memory.retrieval.trace_pipeline import TracePipeline
-        from mm_memory.retrieval.query_rewriter import QueryRewriter
 
         embedder = Embedder(
             model_name=rc.embedding_model,
@@ -171,34 +169,15 @@ class MultimodalAgent(BasicAgent):
             api_key=rc.embedding_api_key or "dummy",
         )
 
-        reranker = None
-        if rc.enable_rerank and rc.rerank_model:
-            reranker = Reranker(
-                model_name=rc.rerank_model,
-                base_url=rc.rerank_base_url,
-                api_key=rc.rerank_api_key or "dummy",
-            )
-
-        memory_bank = MemoryBank(
-            rc.bank_memory_dir,
-            bank_dir_name=rc.bank_dir_name or "trace_bank",
-        )
-        query_rewriter = None
-        if rc.enable_query_rewrite:
-            query_rewriter = QueryRewriter(
-                api_pool=self.api_pool,
-                max_sub_queries=rc.max_sub_queries,
-            )
+        bank_dir = os.path.join(rc.bank_memory_dir, rc.bank_dir_name or "trace_bank")
+        trace_bank = TraceBank(bank_dir)
 
         self.trace_pipeline = TracePipeline(
             config=rc,
-            memory_bank=memory_bank,
+            trace_bank=trace_bank,
             embedder=embedder,
-            reranker=reranker,
-            api_pool=self.api_pool,
-            query_rewriter=query_rewriter,
         )
-        logger.info(f"Trace retrieval initialized: bank={rc.bank_memory_dir}, embedding={rc.embedding_model}")
+        logger.info(f"Trace retrieval initialized: bank={bank_dir}, embedding={rc.embedding_model}")
 
     def _init_state_retrieval(self, rc) -> None:
         """Initialize state-level retrieval (search_experiences tool)."""
@@ -273,7 +252,7 @@ class MultimodalAgent(BasicAgent):
             conversation_history.pop(i)
     
     def _build_system_prompt(self, trace_experience: str = "") -> str:
-        """Build simplified system prompt using Jinja2 template.
+        """Build system prompt using Jinja2 template.
         
         Tool definitions are passed separately via tools parameter to API,
         not included in the system prompt.

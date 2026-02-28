@@ -329,8 +329,7 @@ def test_state_bank_missing():
 
 
 class _FakeEmbedder:
-    async def encode_view(self, composed):
-        del composed
+    async def encode_multimodal(self, text, image_paths=None):
         return np.ones((1, 8), dtype=np.float32)
 
 

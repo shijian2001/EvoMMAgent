@@ -1,189 +1,64 @@
 #!/usr/bin/env python3
-"""Test 3: QueryRewriter + Full TracePipeline.
-
-Covers:
-  - QueryRewriter.rewrite（多模态，带/不带上轮 context，image_caption + variable queries）
-  - TracePipeline.run 四种组合：
-    a) 单轮 + 全功能（rewrite + rerank）
-    b) 多轮 (2 rounds) + sufficiency 判断
-    c) 关闭 rewrite
-    d) 关闭 rerank
-
-Usage:
-    python unit_test/trace_level/test_pipeline.py \
-        --embedding_model Qwen/Qwen3-VL-Embedding-2B \
-        --embedding_base_url http://localhost:8001/v1 \
-        --rerank_model Qwen/Qwen3-VL-Reranker-2B \
-        --rerank_base_url http://localhost:8002/v1 \
-        --llm_model qwen3-vl-8b-instruct \
-        --llm_base_url https://maas.devops.xiaohongshu.com/v1 \
-        --llm_api_key YOUR_API_KEY
-"""
+"""Test 3: TracePipeline end-to-end."""
 
 import argparse
 import asyncio
 import os
-import shutil
 import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from helpers import create_fake_memory_dir, cleanup, ok, section
-
-from config import RetrievalConfig
 from api.async_pool import APIPool
-from mm_memory.memory_bank import MemoryBank
+from config import RetrievalConfig
+from helpers import cleanup, create_fake_memory_dir, ok, section
 from mm_memory.retrieval.embedder import Embedder
-from mm_memory.retrieval.reranker import Reranker
-from mm_memory.retrieval.query_rewriter import QueryRewriter
 from mm_memory.retrieval.trace_pipeline import TracePipeline
+from mm_memory.trace_bank import TraceBank
+from scripts.build_trace_bank import build_trace_bank
 
 
-# ── QueryRewriter ────────────────────────────────────────────────────────────
+async def test_pipeline(memory_dir: str, api_pool: APIPool, embedder: Embedder):
+    section("1. Build trace_bank + pipeline retrieval")
 
-async def test_query_rewriter(api_pool: APIPool):
-    """验证 LLM 能生成 image_caption + variable queries，原始 question 为第一条。"""
-    section("1. QueryRewriter")
+    await build_trace_bank(
+        memory_dir=memory_dir,
+        api_pool=api_pool,
+        embedder=embedder,
+        filter_correct=True,
+        batch_size=2,
+        hindsight_concurrency=2,
+        bank_dir_name="trace_bank",
+    )
+    bank = TraceBank(os.path.join(memory_dir, "trace_bank"))
+    ok(f"trace_bank ready: {len(bank.experiences)} entries")
 
-    rewriter = QueryRewriter(api_pool=api_pool, max_sub_queries=3)
+    config = RetrievalConfig(enable=True, bank_memory_dir=memory_dir, trace_top_n=1, min_score=-1.0)
+    pipeline = TracePipeline(config=config, trace_bank=bank, embedder=embedder)
 
-    # 1a. 无图改写：预期 text_queries = [原始, *额外queries]
-    # image_caption 应为空（无图）
-    result = await rewriter.rewrite(
+    exp = await pipeline.run(
         question="What color is the largest car in the image?",
+        images=[],
+        sub_task="color_recognition",
     )
-    queries = result["text_queries"]
-    assert queries[0] == "What color is the largest car in the image?", \
-        "第一条应是原始 question"
-    assert len(queries) >= 1, "至少应有原始 question"
-    assert "image_caption" in result, "结果应包含 image_caption 字段"
-    ok(f"No-image rewrite → {len(queries)} queries, caption='{result['image_caption']}'")
-    for i, q in enumerate(queries):
-        print(f"      [{i}] {q}")
+    assert isinstance(exp, str) and len(exp) > 0
+    ok(f"pipeline.run returns experience ({len(exp)} chars)")
 
-    # 1b. 带上轮 context 的改写：LLM 应基于 context 调整方向
-    result2 = await rewriter.rewrite(
-        question="What color is the largest car in the image?",
-        previous_context="Found depth estimation tasks. Still need color-related tasks.",
+    exp2 = await pipeline.run(
+        question="How many people are in the photo?",
+        images=[],
+        sub_task="counting",
     )
-    assert len(result2["text_queries"]) >= 1
-    assert "image_caption" in result2, "context rewrite 也应包含 image_caption"
-    ok(f"Rewrite with context → {len(result2['text_queries'])} queries")
+    assert isinstance(exp2, str) and len(exp2) > 0
+    ok("second query retrieval also returns non-empty experience")
 
-    return rewriter
-
-
-# ── Full Pipeline ────────────────────────────────────────────────────────────
-
-async def test_pipeline(
-    memory_dir: str,
-    embedder: Embedder, reranker: Reranker,
-    api_pool: APIPool, rewriter: QueryRewriter,
-):
-    """验证 TracePipeline.run 在不同配置下都能正常返回 experience。"""
-    section("2. Full Pipeline")
-
-    # 先用真实 embedding 构建 trace_bank（无 caption — 测试环境无真实图像文件）
-    bank_dir = os.path.join(memory_dir, "trace_bank")
-    if os.path.exists(bank_dir):
-        shutil.rmtree(bank_dir)
-    bank = await MemoryBank.build(
-        memory_dir=memory_dir, embedder=embedder,
-        filter_correct=True, batch_size=2,
-    )
-    ok(f"Bank ready: {len(bank.task_ids)} entries")
-
-    # ── 2a. 单轮 + 全功能 ──
-    # 链路: rewrite → embed queries → search bank → rerank → LLM summary
-    # 预期: 返回 2-3 句经验总结文本
-    config_a = RetrievalConfig(
-        enable=True, bank_memory_dir=memory_dir,
-        enable_query_rewrite=True, max_sub_queries=2,
-        retrieval_top_k=3, enable_rerank=True, rerank_top_n=2,
-        max_retrieval_rounds=1,
-    )
-    pipeline_a = TracePipeline(
-        config=config_a, memory_bank=bank,
-        embedder=embedder, reranker=reranker,
-        api_pool=api_pool, query_rewriter=rewriter,
-    )
-    exp_a = await pipeline_a.run("What color is the biggest vehicle in the photo?")
-    assert isinstance(exp_a, str) and len(exp_a) > 0, "experience 不应为空"
-    ok(f"[a] Single-round full: {len(exp_a)} chars")
-    print(f"      \"{exp_a[:150]}...\"")
-
-    # ── 2b. 多轮 (2 rounds) ──
-    # 链路: round1(rewrite→search→rerank) → sufficiency judge → 若不足则 round2 → summary
-    # 预期: 返回非空 experience，日志可见 sufficiency 判断
-    config_b = RetrievalConfig(
-        enable=True, bank_memory_dir=memory_dir,
-        enable_query_rewrite=True, max_sub_queries=2,
-        retrieval_top_k=3, enable_rerank=True, rerank_top_n=2,
-        max_retrieval_rounds=2,
-    )
-    pipeline_b = TracePipeline(
-        config=config_b, memory_bank=bank,
-        embedder=embedder, reranker=reranker,
-        api_pool=api_pool, query_rewriter=rewriter,
-    )
-    exp_b = await pipeline_b.run("How many animals and which is closer to the camera?")
-    assert isinstance(exp_b, str) and len(exp_b) > 0
-    ok(f"[b] Multi-round (2): {len(exp_b)} chars")
-
-    # ── 2c. 关闭 rewrite ──
-    # 链路: 直接用原始 question embed → search → rerank → summary
-    # 预期: 正常返回 experience（只是少了改写的多角度查询）
-    config_c = RetrievalConfig(
-        enable=True, bank_memory_dir=memory_dir,
-        enable_query_rewrite=False,
-        retrieval_top_k=3, enable_rerank=True, rerank_top_n=2,
-        max_retrieval_rounds=1,
-    )
-    pipeline_c = TracePipeline(
-        config=config_c, memory_bank=bank,
-        embedder=embedder, reranker=reranker,
-        api_pool=api_pool, query_rewriter=None,
-    )
-    exp_c = await pipeline_c.run("How many people are in the image?")
-    assert isinstance(exp_c, str)
-    ok(f"[c] No rewrite: {len(exp_c)} chars")
-
-    # ── 2d. 关闭 rerank ──
-    # 链路: rewrite → embed → search → 按 retrieval_score 排序取 top-n → summary
-    # 预期: 正常返回 experience（跳过 reranker，用原始检索分数排序）
-    config_d = RetrievalConfig(
-        enable=True, bank_memory_dir=memory_dir,
-        enable_query_rewrite=True, max_sub_queries=2,
-        retrieval_top_k=3, enable_rerank=False, rerank_top_n=2,
-        max_retrieval_rounds=1,
-    )
-    pipeline_d = TracePipeline(
-        config=config_d, memory_bank=bank,
-        embedder=embedder, reranker=None,
-        api_pool=api_pool, query_rewriter=rewriter,
-    )
-    exp_d = await pipeline_d.run("What color is the car?")
-    assert isinstance(exp_d, str)
-    ok(f"[d] No rerank: {len(exp_d)} chars")
-
-
-# ── Main ─────────────────────────────────────────────────────────────────────
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--embedding_model", required=True,
-                        help="e.g. Qwen/Qwen3-VL-Embedding-2B")
-    parser.add_argument("--embedding_base_url", required=True,
-                        help="e.g. http://localhost:8001/v1")
+    parser.add_argument("--embedding_model", required=True, help="e.g. Qwen/Qwen3-VL-Embedding-2B")
+    parser.add_argument("--embedding_base_url", required=True, help="e.g. http://localhost:8001/v1")
     parser.add_argument("--embedding_api_key", default="dummy")
-    parser.add_argument("--rerank_model", required=True,
-                        help="e.g. Qwen/Qwen3-VL-Reranker-2B")
-    parser.add_argument("--rerank_base_url", required=True,
-                        help="e.g. http://localhost:8002/v1")
-    parser.add_argument("--rerank_api_key", default="dummy")
-    parser.add_argument("--llm_model", required=True,
-                        help="e.g. qwen3-vl-8b-instruct")
-    parser.add_argument("--llm_base_url", required=True,
-                        help="e.g. https://maas.devops.xiaohongshu.com/v1")
+    parser.add_argument("--llm_model", required=True, help="e.g. qwen3-vl-8b-instruct")
+    parser.add_argument("--llm_base_url", required=True, help="e.g. https://maas.devops.xiaohongshu.com/v1")
     parser.add_argument("--llm_api_key", required=True)
     args = parser.parse_args()
 
@@ -200,15 +75,7 @@ async def main():
             base_url=args.embedding_base_url,
             api_key=args.embedding_api_key,
         )
-        reranker = Reranker(
-            model_name=args.rerank_model,
-            base_url=args.rerank_base_url,
-            api_key=args.rerank_api_key,
-        )
-
-        rewriter = await test_query_rewriter(api_pool)
-        await test_pipeline(memory_dir, embedder, reranker, api_pool, rewriter)
-
+        await test_pipeline(memory_dir, api_pool, embedder)
         print("\n🎉 test_pipeline ALL PASSED\n")
     finally:
         cleanup(memory_dir)

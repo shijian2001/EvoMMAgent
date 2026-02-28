@@ -512,7 +512,7 @@ async def build_state_bank(
             continue
 
         logger.info(f"Embedding view {view}: {len(payloads)} states")
-        sub_emb = await embedder.encode_view_batch(payloads, batch_size=batch_size)
+        sub_emb = await embedder.encode_multimodal_batch(payloads, batch_size=batch_size)
         if global_dim is None:
             global_dim = sub_emb.shape[1]
 

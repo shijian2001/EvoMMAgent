@@ -98,13 +98,16 @@ python run_mm_agent.py
 
 ## Retrieval Pipeline (Optional)
 
-Build a memory bank from training traces, then use it to augment inference with experience from similar solved tasks.
+Build a trace-level experience bank from training traces, then use it to augment inference with top-1 similar experience.
 
 ```bash
-# 1. Build memory bank (offline, one-time)
-python scripts/build_memory_bank.py \
+# 1. Build trace bank (offline, one-time)
+python scripts/build_trace_bank.py \
     --memory_dir /path/to/train_memory/ \
-    --embedding_model jina-embeddings-v3 \
+    --llm_model qwen-vl-hindsight \
+    --llm_base_url http://vlm:8003/v1 \
+    --llm_api_key YOUR_KEY \
+    --embedding_model Qwen/Qwen3-VL-Embedding-2B \
     --embedding_base_url http://vllm-emb:8001/v1
 
 # 2. Run evaluation with retrieval — add retrieval_config to agent_config

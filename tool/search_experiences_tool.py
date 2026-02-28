@@ -90,7 +90,10 @@ class SearchExperiencesTool(BasicTool):
             return obs, {"round": self._round, "view": view, "experiences": []}
 
         composed = compose_view(self._elements, view)
-        query_emb = await self.embedder.encode_view(composed)
+        query_emb = await self.embedder.encode_multimodal(
+            str(composed.get("text", "")),
+            composed.get("images"),
+        )
         candidates = self.state_bank.search_view(
             view=view,
             query_emb=query_emb,

@@ -85,7 +85,7 @@ def _llm_answer_response(answer: str) -> dict:
 
 
 class _FakeEmbedder:
-    async def encode_view(self, composed):
+    async def encode_multimodal(self, text, image_paths=None):
         return np.ones((1, 8), dtype=np.float32)
 
 

@@ -192,7 +192,7 @@ async def build_test_state_bank(memory_dir: str, embedder: Embedder):
         indices = per_view_indices[view]
         if not payloads:
             continue
-        sub_emb = await embedder.encode_view_batch(payloads, batch_size=2)
+        sub_emb = await embedder.encode_multimodal_batch(payloads, batch_size=2)
         full_emb = np.zeros((len(state_metas), sub_emb.shape[1]), dtype=np.float32)
         full_mask = np.zeros((len(state_metas),), dtype=bool)
         for row_i, state_i in enumerate(indices):
@@ -281,14 +281,12 @@ async def test_build_and_retrieve(memory_dir: str, embedder: Embedder):
     with open(img_path, "wb") as f:
         f.write(tiny_png_bytes)
 
-    mm_emb = await embedder.encode_view(
-        {
-            "text": "Question: Which image is similar?",
-            "images": [img_path],
-        }
+    mm_emb = await embedder.encode_multimodal(
+        "Question: Which image is similar?",
+        [img_path],
     )
     assert mm_emb.shape[0] == 1 and mm_emb.shape[1] > 0, f"Unexpected multimodal shape: {mm_emb.shape}"
-    ok(f"[d] multimodal encode_view shape={mm_emb.shape}")
+    ok(f"[d] encode_multimodal shape={mm_emb.shape}")
 
 
 # ── Main ────────────────────────────────────────────────────────────────────

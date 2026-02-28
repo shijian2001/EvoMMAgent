@@ -75,12 +75,10 @@ class Embedder:
                 else:
                     raise
 
-    async def encode_batch(
+    async def encode_text_batch(
         self, texts: List[str], batch_size: int = 32
     ) -> np.ndarray:
         """Encode a large list of texts in batches.
-
-        Useful for offline memory bank construction.
 
         Args:
             texts: List of text strings
@@ -99,17 +97,16 @@ class Embedder:
             )
         return np.vstack(all_embeddings)
 
-    async def encode_multimodal(self, text: str, image_paths: List[str]) -> np.ndarray:
-        """Encode one multimodal query (text + one or more images).
+    async def encode_multimodal(
+        self, text: str, image_paths: Optional[List[str]] = None
+    ) -> np.ndarray:
+        """Encode one query with optional images.
 
-        vLLM multimodal embedding models require the chat-style ``messages``
-        format instead of ``input``.  Images are base64-encoded (consistent
-        with ``api/vision_utils.py``) so no ``--allowed-local-media-path``
-        flag is needed on the vLLM server.
-
-        For multiple images, embeddings are averaged across per-image encodings.
+        When *image_paths* is empty or ``None``, falls back to text-only
+        encoding.  Otherwise uses the vLLM chat-style ``messages`` format
+        with base64-encoded images.  Multiple images are averaged.
         """
-        valid_paths = [p for p in image_paths if p and os.path.exists(p)]
+        valid_paths = [p for p in (image_paths or []) if p and os.path.exists(p)]
         if not valid_paths:
             return await self.encode_text([text or ""])
 
@@ -166,27 +163,25 @@ class Embedder:
         stacked = np.vstack(per_image_embeddings)
         return np.mean(stacked, axis=0, keepdims=True).astype(np.float32)
 
-    async def encode_view(self, composed: Dict[str, Any]) -> np.ndarray:
-        """Encode one composed view payload."""
-        text = str(composed.get("text", ""))
-        images = composed.get("images") or []
-        if images:
-            return await self.encode_multimodal(text, images)
-        return await self.encode_text([text])
-
-    async def encode_view_batch(
-        self, composed_list: List[Dict[str, Any]], batch_size: int = 32
+    async def encode_multimodal_batch(
+        self, items: List[Dict[str, Any]], batch_size: int = 32
     ) -> np.ndarray:
-        """Encode a list of composed view payloads in order."""
-        if not composed_list:
+        """Encode a list of ``{"text": ..., "images": [...]}`` items in batches."""
+        if not items:
             return np.zeros((0, self.dim or 0), dtype=np.float32)
 
         all_embeddings: List[np.ndarray] = []
-        for i in range(0, len(composed_list), batch_size):
-            batch = composed_list[i : i + batch_size]
-            batch_embs = await asyncio.gather(*[self.encode_view(item) for item in batch])
+        for i in range(0, len(items), batch_size):
+            batch = items[i : i + batch_size]
+            batch_embs = await asyncio.gather(*[
+                self.encode_multimodal(
+                    str(item.get("text", "")),
+                    item.get("images"),
+                )
+                for item in batch
+            ])
             all_embeddings.append(np.vstack(batch_embs))
             logger.info(
-                f"Embedded {min(i + batch_size, len(composed_list))}/{len(composed_list)} composed views"
+                f"Embedded {min(i + batch_size, len(items))}/{len(items)} items"
             )
         return np.vstack(all_embeddings)

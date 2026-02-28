@@ -59,15 +59,7 @@ class RetrievalConfig:
     min_score: float = 0.1                      # cosine similarity threshold
     
     # === Trace mode settings ===
-    enable_rerank: bool = True
-    rerank_model: str = ""
-    rerank_base_url: str = ""
-    rerank_api_key: str = ""
-    rerank_top_n: int = 3
-    retrieval_top_k: int = 10
-    enable_query_rewrite: bool = True
-    max_sub_queries: int = 5
-    max_retrieval_rounds: int = 1               # 1=single, 2+=multi-round
+    trace_top_n: int = 1                         # fixed top-1 retrieval
     
     # === State mode settings ===
     min_q_value: int = 7                        # Q-value filter threshold

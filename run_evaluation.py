@@ -87,15 +87,8 @@ async def main():
     #         "bank_memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/20260210/retrieve_exp/meta_train/blink/qwen3vl_32b/w_tool",  # dir with tasks/ and trace_bank/
     #         "embedding_model": "qwen3vl-embed",
     #         "embedding_base_url": "http://localhost:8001/v1",
-    #         "rerank_model": "qwen3vl-reranker",
-    #         "rerank_base_url": "http://localhost:8002/v1",
-    #         "enable_query_rewrite": True,
-    #         "max_sub_queries": 3,
-    #         "retrieval_top_k": 10,
-    #         "enable_rerank": True,
-    #         "rerank_top_n": 5,
+    #         "trace_top_n": 1,
     #         "min_score": 0.01,
-    #         "max_retrieval_rounds": 5,
     #     },
     # }
     
