@@ -10,6 +10,7 @@ To add a new tool test:
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Dict, Any, Optional
 from tool import TOOL_REGISTRY
@@ -18,7 +19,7 @@ from mm_memory.memory import Memory
 print(f"Registered tools: {list(TOOL_REGISTRY.keys())}\n")
 
 # Configuration
-IMG = "test_image.png"
+IMG = "/mnt/tidalfs-bdsz01/usr/wangshijian/EvoMMAgent/test_ocr.jpg"
 OUTPUT_DIR = Path("test_outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -34,7 +35,9 @@ TOOLS_TO_PRELOAD = [
     "estimate_object_depth", 
     "get_image2images_similarity", 
     "get_image2texts_similarity", 
-    "get_text2images_similarity"
+    "get_text2images_similarity",
+    "solve_math_equation",
+    "web_search"
 ]
 
 # Optional: preload models to avoid first-call latency
@@ -70,12 +73,12 @@ def _format_observation_data(data: Dict[str, Any]) -> str:
         
         # Format value
         if isinstance(value, list):
-            # Special handling for regions (list of dicts with label and bbox)
-            if value and isinstance(value[0], dict) and "label" in value[0] and "bbox" in value[0]:
+            # Special handling for regions (list of dicts with label and bbox_2d)
+            if value and isinstance(value[0], dict) and "label" in value[0] and ("bbox_2d" in value[0] or "bbox" in value[0]):
                 region_strs = []
                 for item in value:
                     label = item["label"]
-                    bbox = item["bbox"]
+                    bbox = item.get("bbox_2d", item.get("bbox"))
                     region_strs.append(f"{label} at {bbox}")
                 formatted_value = ", ".join(region_strs)
             else:
@@ -104,7 +107,7 @@ async def test_tool(
     Example:
         await test_tool(
             "zoom_in",
-            {"image": img_id, "bbox": [0.2, 0.2, 0.8, 0.8], "zoom_factor": 2.0}
+            {"image": img_id, "bbox_2d": [0.2, 0.2, 0.8, 0.8], "zoom_factor": 2.0}
         )
     """
     print(f"\n{'='*60}")
@@ -211,79 +214,78 @@ async def test():
     img_id = memory.add_input(IMG, modality="img")
     print(f"Input image: {IMG} -> {img_id}")
     
-    # Test 1: zoom_in
-    zoomed_img_id = await test_tool(
-        "zoom_in",
-        {"image": img_id, "bbox": [0.2, 0.2, 0.8, 0.8], "zoom_factor": 2.0}
-    )
+    # zoomed_img_id = await test_tool(
+    #         "zoom_in",
+    #         {"image": img_id, "bbox_2d": [0.2, 0.2, 0.8, 0.8], "zoom_factor": 2.0}
+    # )
     
-    # Test 2: crop
-    cropped_img_id = await test_tool(
-        "crop",
-        {"image": img_id, "bbox": [0.1, 0.3, 0.6, 0.7]}
-    )
+    # cropped_img_id = await test_tool(
+    #     "crop",
+    #     {"image": img_id, "bbox_2d": [0.1, 0.3, 0.6, 0.7]}
+    # )
     
-    # Test 3: calculator
+    # await test_tool(
+    #     "calculator",
+    #     {"expression": "123 * 456 + 789"}
+    # )
+
     await test_tool(
-        "calculator",
-        {"expression": "123 * 456 + 789"}
+        "solve_math_equation",
+        {"query": "x^2 + 2x + 1 = 0, what is x?"}
     )
     
-    # Test 4: ocr
     await test_tool(
         "ocr",
         {"image": img_id}
     )
-    
-    # Test 5: localize_objects
+
     await test_tool(
-        "localize_objects",
-        {"image": img_id, "objects": ["bread", "orange"]}
+        "web_search",
+        {"query": "Which city is the capital of China?", "top_k": 5},
     )
     
-    # Test 6: estimate_region_depth
-    await test_tool(
-        "estimate_region_depth",
-        {"image": img_id, "bbox": [0.1, 0.2, 0.5, 0.6], "mode": "mean"}
-    )
+    # await test_tool(
+    #     "localize_objects",
+    #     {"image": img_id, "objects": ["bread", "orange"]}
+    # )
     
-    # Test 7: estimate_object_depth
-    await test_tool(
-        "estimate_object_depth",
-        {"image": img_id, "object": "orange"}
-    )
+    # await test_tool(
+    #     "estimate_region_depth",
+    #     {"image": img_id, "bbox_2d": [0.1, 0.2, 0.5, 0.6], "mode": "mean"}
+    # )
     
-    # Test 8: visualize_regions
-    await test_tool(
-        "visualize_regions",
-        {
-            "image": img_id,
-            "regions": [
-                {"bbox": [0.1, 0.1, 0.4, 0.4], "label": "Region A"},
-                {"bbox": [0.6, 0.6, 0.9, 0.9], "label": "Region B"}
-            ]
-        }
-    )
+    # await test_tool(
+    #     "estimate_object_depth",
+    #     {"image": img_id, "object": "orange"}
+    # )
     
-    # Test 9: get_image2texts_similarity
-    await test_tool(
-        "get_image2texts_similarity",
-        {"image": img_id, "texts": ["a cat", "a dog", "food"]}
-    )
+    # await test_tool(
+    #     "visualize_regions",
+    #     {
+    #         "image": img_id,
+    #         "regions": [
+    #             {"bbox_2d": [0.1, 0.1, 0.4, 0.4], "label": "Region A"},
+    #             {"bbox_2d": [0.6, 0.6, 0.9, 0.9], "label": "Region B"}
+    #         ]
+    #     }
+    # )
     
-    # Test 10: get_image2images_similarity (if we have multiple images)
-    if zoomed_img_id and cropped_img_id:
-        await test_tool(
-            "get_image2images_similarity",
-            {"image": img_id, "other_images": [zoomed_img_id, cropped_img_id]}
-        )
+    # await test_tool(
+    #     "get_image2texts_similarity",
+    #     {"image": img_id, "texts": ["a cat", "a dog", "food"]}
+    # )
     
-    # Test 11: get_text2images_similarity (if we have multiple images)
-    if zoomed_img_id and cropped_img_id:
-        await test_tool(
-            "get_text2images_similarity",
-            {"text": "a zoomed in image", "images": [img_id, zoomed_img_id, cropped_img_id]}
-        )
+    # if zoomed_img_id and cropped_img_id:
+    #     await test_tool(
+    #         "get_image2images_similarity",
+    #         {"image": img_id, "other_images": [zoomed_img_id, cropped_img_id]}
+    #     )
+    
+    # if zoomed_img_id and cropped_img_id:
+    #     await test_tool(
+    #         "get_text2images_similarity",
+    #         {"text": "a zoomed in image", "images": [img_id, zoomed_img_id, cropped_img_id]}
+    #     )
     
     # Finalize task and save trace automatically
     memory.end_task(success=True)

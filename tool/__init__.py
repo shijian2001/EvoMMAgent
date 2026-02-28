@@ -20,6 +20,8 @@ from tool.get_text2images_similarity_tool import GetTextToImagesSimilarityTool
 from tool.ocr_tool import OCRTool
 from tool.get_images_tool import GetImagesTool
 from tool.measure_region_property_tool import MeasureRegionPropertyTool
+from tool.solve_math_equation_tool import SolveMathEquationTool
+from tool.web_search_tool import WebSearchTool
 try:
     from tool.search_experiences_tool import SearchExperiencesTool
 except Exception:
