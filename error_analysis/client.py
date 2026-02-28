@@ -80,12 +80,14 @@ class AsyncLLMClient:
         for attempt in range(self.max_retries):
             try:
                 resp = await self._client.post(self.api_url, json=payload)  # type: ignore[union-attr]
+                if resp.status_code != 200:
+                    logger.error("HTTP %d response body: %s", resp.status_code, resp.text[:500])
                 resp.raise_for_status()
                 return resp.json()["choices"][0]["message"]["content"]
             except Exception as e:
                 last_err = e
                 if attempt < self.max_retries - 1:
-                    delay = min(1.0 * (2 ** attempt), 10.0)
+                    delay = min(0.5 * (1.5 ** attempt), 3.0)
                     logger.warning(
                         "Retry %d/%d: %s — wait %.1fs",
                         attempt + 1, self.max_retries, e, delay,

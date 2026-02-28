@@ -92,7 +92,7 @@ async def annotate_single(
     task_id = trace_data.get("task_id", "?")
 
     resized_paths, tmp_files = _resize_images(image_paths)
-    max_attempts = 8
+    max_attempts = 3
     try:
         for attempt in range(max_attempts):
             try:
@@ -338,7 +338,7 @@ async def main():
     client = AsyncLLMClient(
         api_key=args.llm_api_key,
         concurrency=args.concurrency,
-        max_retries=8,
+        max_retries=3,
     )
 
     embedder = Embedder(
