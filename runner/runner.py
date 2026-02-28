@@ -252,8 +252,8 @@ class Runner:
             query = (sample.get('prompt') or sample['question']).strip()
             
             if sample.get('choices') and not sample.get('prompt'):
-                # Add choices to query if not in prompt (strip each choice)
-                choices_text = '\n'.join([choice.strip() for choice in sample['choices']])
+                _, _, full_options = make_options(sample['choices'], format='letter')
+                choices_text = '\n'.join(full_options)
                 query = f"{query}\n\n{choices_text}"
             
             # Append task-specific instruction based on task type
