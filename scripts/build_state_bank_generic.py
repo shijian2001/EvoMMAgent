@@ -36,7 +36,7 @@ from scripts.build_state_bank import (
     build_hindsight_prompt,
 )
 
-MAX_LONG_SIDE = 1280
+MAX_LONG_SIDE = 768
 
 
 def _resize_images(image_paths: List[str]) -> Tuple[List[str], List[str]]:
