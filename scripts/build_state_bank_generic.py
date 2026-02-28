@@ -19,21 +19,49 @@ import json
 import logging
 import os
 import sys
+import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
+from PIL import Image
 
 from api.json_parser import JSONParser
 from error_analysis.client import AsyncLLMClient
 from mm_memory.state_bank import ALL_VIEWS, StateBank, available_views, compose_view
 from mm_memory.retrieval.embedder import Embedder
-
 from scripts.build_state_bank import (
     convert_trace_to_trajectory,
     build_hindsight_prompt,
 )
+
+MAX_LONG_SIDE = 1280
+
+
+def _resize_images(image_paths: List[str]) -> Tuple[List[str], List[str]]:
+    """Resize images so the long side <= MAX_LONG_SIDE. Returns (resized_paths, tmp_files)."""
+    resized = []
+    tmp_files = []
+    for p in image_paths:
+        if not os.path.exists(p):
+            continue
+        try:
+            img = Image.open(p)
+            w, h = img.size
+            if max(w, h) > MAX_LONG_SIDE:
+                scale = MAX_LONG_SIDE / max(w, h)
+                img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+                tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+                img.save(tmp.name, format="JPEG", quality=85)
+                tmp.close()
+                resized.append(tmp.name)
+                tmp_files.append(tmp.name)
+            else:
+                resized.append(p)
+        except Exception:
+            resized.append(p)
+    return resized, tmp_files
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,32 +91,44 @@ async def annotate_single(
     prompt, image_paths = build_hindsight_prompt(trace_data, trajectory)
     task_id = trace_data.get("task_id", "?")
 
-    for attempt in range(8):
-        try:
-            answer = await client.call(SYSTEM_PREFIX + prompt, image_paths)
-            parsed = JSONParser.parse(answer)
+    resized_paths, tmp_files = _resize_images(image_paths)
+    max_attempts = 8
+    try:
+        for attempt in range(max_attempts):
+            try:
+                answer = await client.call(SYSTEM_PREFIX + prompt, resized_paths)
+                parsed = JSONParser.parse(answer)
 
-            if isinstance(parsed, list):
-                ann_map = {
-                    a.get("state", a.get("state_index")): a
-                    for a in parsed if isinstance(a, dict)
-                }
-                for entry in trajectory:
-                    idx = entry["state_index"]
-                    if idx in ann_map:
-                        entry["q_value"] = ann_map[idx].get("q_value", 5)
-                        entry["experience"] = ann_map[idx].get("experience", "")
-                    else:
-                        entry["q_value"] = 5
-                        entry["experience"] = ""
-                return trajectory
+                if isinstance(parsed, list):
+                    ann_map = {
+                        a.get("state", a.get("state_index")): a
+                        for a in parsed if isinstance(a, dict)
+                    }
+                    for entry in trajectory:
+                        idx = entry["state_index"]
+                        if idx in ann_map:
+                            entry["q_value"] = ann_map[idx].get("q_value", 5)
+                            entry["experience"] = ann_map[idx].get("experience", "")
+                        else:
+                            entry["q_value"] = 5
+                            entry["experience"] = ""
+                    return trajectory
 
-            logger.warning(
-                f"Unexpected parse result for {task_id}: {type(parsed)} "
-                f"(attempt {attempt + 1}/8)"
-            )
-        except Exception as e:
-            logger.warning(f"Annotation failed for {task_id}: {e} (attempt {attempt + 1}/3)")
+                logger.warning(
+                    f"Unexpected parse result for {task_id}: {type(parsed)} "
+                    f"(attempt {attempt + 1}/{max_attempts})"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Annotation failed for {task_id}: {e} "
+                    f"(attempt {attempt + 1}/{max_attempts})"
+                )
+    finally:
+        for tmp in tmp_files:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
     return None
 
@@ -298,6 +338,7 @@ async def main():
     client = AsyncLLMClient(
         api_key=args.llm_api_key,
         concurrency=args.concurrency,
+        max_retries=8,
     )
 
     embedder = Embedder(
