@@ -28,7 +28,7 @@ import numpy as np
 from PIL import Image
 
 from api.json_parser import JSONParser
-from error_analysis.client import AsyncLLMClient
+from error_analysis.client import AsyncLLMClient, ContentFilterError
 from mm_memory.state_bank import ALL_VIEWS, StateBank, available_views, compose_view
 from mm_memory.retrieval.embedder import Embedder
 from scripts.build_state_bank import (
@@ -118,6 +118,9 @@ async def annotate_single(
                     f"Unexpected parse result for {task_id}: {type(parsed)} "
                     f"(attempt {attempt + 1}/{max_attempts})"
                 )
+            except ContentFilterError:
+                logger.warning(f"Skipping {task_id}: content filter triggered")
+                return None
             except Exception as e:
                 logger.warning(
                     f"Annotation failed for {task_id}: {e} "

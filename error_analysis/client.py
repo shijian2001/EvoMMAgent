@@ -16,6 +16,10 @@ DEFAULT_API_URL = (
 )
 
 
+class ContentFilterError(RuntimeError):
+    """Raised when Azure content filter rejects the request (not retryable)."""
+
+
 class AsyncLLMClient:
     """Async LLM client gated by semaphore with exponential-backoff retry."""
 
@@ -81,9 +85,16 @@ class AsyncLLMClient:
             try:
                 resp = await self._client.post(self.api_url, json=payload)  # type: ignore[union-attr]
                 if resp.status_code != 200:
-                    logger.error("HTTP %d response body: %s", resp.status_code, resp.text[:500])
+                    body = resp.text[:500]
+                    logger.error("HTTP %d response body: %s", resp.status_code, body)
+                    if "content_filter" in body or "ContentFilter" in body:
+                        raise ContentFilterError(
+                            f"Content filter rejected request: {body}"
+                        )
                 resp.raise_for_status()
                 return resp.json()["choices"][0]["message"]["content"]
+            except ContentFilterError:
+                raise
             except Exception as e:
                 last_err = e
                 if attempt < self.max_retries - 1:
