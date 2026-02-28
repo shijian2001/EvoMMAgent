@@ -1,22 +1,13 @@
 """Tool for solving mathematical equations using WolframAlpha."""
 
 import os
-import traceback
 import requests
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Union
 from xml.etree import ElementTree as ET
-from urllib.error import HTTPError
 import threading
 
 from tool.base_tool import BasicTool, register_tool
-
-try:
-    import wolframalpha
-
-    WOLFRAM_AVAILABLE = True
-except ImportError:
-    WOLFRAM_AVAILABLE = False
 
 try:
     from dotenv import load_dotenv
@@ -107,7 +98,6 @@ class SolveMathEquationTool(BasicTool):
 
     def __init__(self, cfg=None, use_zh=False):
         super().__init__(cfg, use_zh)
-        self.client = None
         self.api_keys: List[str] = []
         self.max_retries = 3
 
@@ -124,35 +114,6 @@ class SolveMathEquationTool(BasicTool):
         # Fallback to environment variables
         if not self.api_keys:
             self.api_keys = self._load_wolfram_keys_from_env()
-
-        # Initialize client with first available key
-        if WOLFRAM_AVAILABLE and self.api_keys:
-            self.client = wolframalpha.Client(self.api_keys[0])
-
-    def _create_client_with_key(self, key: str):
-        """Create a new wolframalpha client with the specified key."""
-        if WOLFRAM_AVAILABLE and key:
-            return wolframalpha.Client(key)
-        return None
-
-    @staticmethod
-    def _to_bool(value: Any) -> bool:
-        """Convert Wolfram success flag to bool safely."""
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.strip().lower() == "true"
-        return bool(value)
-
-    @staticmethod
-    def _normalize_pods(raw_pods: Any) -> List[Dict]:
-        if raw_pods is None:
-            return []
-        if isinstance(raw_pods, list):
-            return [p for p in raw_pods if isinstance(p, dict)]
-        if isinstance(raw_pods, dict):
-            return [raw_pods]
-        return []
 
     @staticmethod
     def _looks_like_interpretation(text: str) -> bool:
@@ -247,50 +208,13 @@ class SolveMathEquationTool(BasicTool):
                 "_retryable": self._is_retryable_error(str(e)),
             }
 
-    def _process_sdk_response(self, res) -> Dict:
-        """Process the response from wolframalpha SDK."""
-        try:
-            success = self._to_bool(res["@success"])
-        except Exception:
-            success = False
-
-        if not success:
-            return {"error": "Your Wolfram query is invalid. Please try a new query."}
-
-        answer = ""
-        pods = self._normalize_pods(res["pod"] if "pod" in res else None)
-        for pod in pods:
-            title = pod.get("@title", "")
-            if title == "Solution":
-                subpod = pod.get("subpod", {})
-                if isinstance(subpod, list):
-                    answer = subpod[0].get("plaintext", "") if subpod else ""
-                elif isinstance(subpod, dict):
-                    answer = subpod.get("plaintext", "")
-            if title in {"Results", "Solutions"}:
-                subpods = pod.get("subpod", [])
-                if isinstance(subpods, dict):
-                    subpods = [subpods]
-                if isinstance(subpods, list):
-                    for i, sub in enumerate(subpods):
-                        if isinstance(sub, dict):
-                            text = sub.get("plaintext", "")
-                            answer += f"ans {i}: {text}\n"
-                break
-
-        if not answer:
-            try:
-                answer = next(res.results).text
-            except Exception:
-                answer = ""
-
-        if not answer or self._looks_like_interpretation(answer):
-            return {"error": "No good Wolfram Alpha result was found."}
-
-        return {"result": answer.strip()}
-
     def _query_with_retry(self, query: str) -> Dict:
-        """Execute query with automatic key rotation on retryable failures."""
+        """Execute query with automatic key rotation on retryable failures.
+
+        Uses direct HTTP requests instead of the wolframalpha SDK to avoid
+        'asyncio.run() cannot be called from a running event loop' errors
+        when called from an async context (e.g. the agent's ReAct loop).
+        """
         tried_keys = set()
         last_error = None
 
@@ -300,34 +224,13 @@ class SolveMathEquationTool(BasicTool):
                 continue
             tried_keys.add(current_key)
 
-            # Try SDK first
-            client = self._create_client_with_key(current_key)
-            if client:
-                try:
-                    res = client.query(query)
-                    return self._process_sdk_response(res)
-                except AssertionError:
-                    # SDK assertion error, try HTTP fallback
-                    result = self._query_via_http(query, current_key)
-                    if "error" not in result or not result.pop("_retryable", False):
-                        return result
-                    last_error = result
-                except HTTPError as e:
-                    code = getattr(e, "code", None)
-                    if code not in (403, 429):
-                        return {"error": f"WolframAlpha HTTP error: code={code}"}
-                    last_error = {"error": str(e)}
-                except Exception as e:
-                    if not self._is_retryable_error(str(e)):
-                        return {"error": f"Error querying Wolfram Alpha: {e}"}
-                    last_error = {"error": str(e)}
-            else:
-                result = self._query_via_http(query, current_key)
-                if "error" not in result or not result.pop("_retryable", False):
-                    return result
-                last_error = result
+            result = self._query_via_http(query, current_key)
+            if "error" not in result or not result.pop("_retryable", False):
+                return result
+            last_error = result
 
-        last_error.pop("_retryable", None)
+        if last_error:
+            last_error.pop("_retryable", None)
         return last_error or {"error": "All API keys exhausted."}
 
     def call(self, params: Union[str, Dict]) -> Dict:
@@ -337,9 +240,6 @@ class SolveMathEquationTool(BasicTool):
 
         if not query:
             return {"error": "Query cannot be empty."}
-
-        if not WOLFRAM_AVAILABLE:
-            return {"error": "wolframalpha package not installed."}
 
         if not self.api_keys:
             return {
