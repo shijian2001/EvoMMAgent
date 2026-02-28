@@ -63,7 +63,7 @@ async def annotate_single(
     prompt, image_paths = build_hindsight_prompt(trace_data, trajectory)
     task_id = trace_data.get("task_id", "?")
 
-    for attempt in range(3):
+    for attempt in range(8):
         try:
             answer = await client.call(SYSTEM_PREFIX + prompt, image_paths)
             parsed = JSONParser.parse(answer)
@@ -85,7 +85,7 @@ async def annotate_single(
 
             logger.warning(
                 f"Unexpected parse result for {task_id}: {type(parsed)} "
-                f"(attempt {attempt + 1}/3)"
+                f"(attempt {attempt + 1}/8)"
             )
         except Exception as e:
             logger.warning(f"Annotation failed for {task_id}: {e} (attempt {attempt + 1}/3)")
