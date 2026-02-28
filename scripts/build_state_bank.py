@@ -129,6 +129,7 @@ def _build_trajectory_text(trajectory: List[Dict[str, Any]]) -> str:
 
 def _build_correct_prompt(
     question: str, images_note: str, type_line: str, traj_text: str,
+    tools_section: str = "",
 ) -> str:
     return f"""\
 You are evaluating a complete agent reasoning trace. The task was solved CORRECTLY.
@@ -137,7 +138,7 @@ error-prone steps. Judge each step by the quality and relevance of its output.
 
 ## Task
 {images_note}Question: {question}{type_line}
-
+{tools_section}
 ## Trajectory
 The initial state s_0 is the question and images above. Each subsequent state
 is what the agent has seen so far, including all previous actions and observations.
@@ -192,7 +193,7 @@ Output JSON array:
 
 def _build_incorrect_prompt(
     question: str, images_note: str, type_line: str, traj_text: str,
-    ground_truth: str,
+    ground_truth: str, tools_section: str = "",
 ) -> str:
     gt_line = f"\nCorrect answer: {ground_truth}" if ground_truth else ""
     return f"""\
@@ -205,7 +206,7 @@ ignored evidence, or led the reasoning astray.
 
 ## Task
 {images_note}Question: {question}{type_line}
-
+{tools_section}
 ## Trajectory
 The initial state s_0 is the question and images above. Each subsequent state
 is what the agent has seen so far, including all previous actions and observations.
@@ -259,6 +260,33 @@ Output JSON array:
 ]"""
 
 
+AGENT_TOOLS = [
+    ("ocr", "Extract text from an image"),
+    ("solve_math_equation", "Solve mathematical equations and problems using WolframAlpha"),
+    ("web_search", "Search the web for information using a text query"),
+    ("localize_objects", "Localize objects and return their bounding boxes"),
+    ("zoom_in", "Zoom in on a region by cropping and upscaling"),
+    ("calculator", "Calculate mathematical expressions"),
+    ("crop", "Crop a region from an image"),
+    ("visualize_regions", "Draw bounding boxes and labels on an image"),
+    ("estimate_region_depth", "Estimate depth of a region"),
+    ("estimate_object_depth", "Estimate depth of an object by text description"),
+    ("get_image2images_similarity", "Compute similarity between one image and multiple images"),
+    ("get_image2texts_similarity", "Compute similarity between one image and multiple texts"),
+    ("get_text2images_similarity", "Compute similarity between one text and multiple images"),
+]
+
+
+def _build_tools_section(tools: List[Tuple[str, str]]) -> str:
+    """Build an '## Available Tools' section for hindsight prompts."""
+    if not tools:
+        return ""
+    lines = ["## Available Tools"]
+    for name, desc in tools:
+        lines.append(f"- {name}: {desc}")
+    return "\n".join(lines) + "\n"
+
+
 def build_hindsight_prompt(
     trace_data: Dict[str, Any], trajectory: List[Dict[str, Any]]
 ) -> Tuple[str, List[str]]:
@@ -279,13 +307,17 @@ def build_hindsight_prompt(
     traj_text = _build_trajectory_text(trajectory)
     images_note = "The input images are shown above.\n" if image_paths else ""
     type_line = f"\nType: {sub_task}" if sub_task else ""
+    tools_section = _build_tools_section(AGENT_TOOLS)
 
     if trace_data.get("is_correct", False):
-        prompt = _build_correct_prompt(question, images_note, type_line, traj_text)
+        prompt = _build_correct_prompt(
+            question, images_note, type_line, traj_text, tools_section,
+        )
     else:
         ground_truth = trace_data.get("ground_truth", "")
         prompt = _build_incorrect_prompt(
             question, images_note, type_line, traj_text, ground_truth,
+            tools_section,
         )
 
     return prompt, image_paths
