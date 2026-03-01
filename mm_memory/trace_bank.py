@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
@@ -25,7 +25,15 @@ class TraceBank:
 
         self.embeddings: np.ndarray = np.load(embeddings_path)
         with open(experiences_path, "r", encoding="utf-8") as f:
-            self.experiences: List[str] = json.load(f)
+            raw: List[Union[str, Dict[str, Any]]] = json.load(f)
+
+        # Normalize: old format (List[str]) -> new format (List[Dict])
+        self.experiences: List[Dict[str, Any]] = []
+        for item in raw:
+            if isinstance(item, str):
+                self.experiences.append({"experience": item, "source": "correct", "task_id": ""})
+            else:
+                self.experiences.append(item)
 
         if self.embeddings.shape[0] != len(self.experiences):
             raise ValueError(
@@ -41,8 +49,8 @@ class TraceBank:
             f"embedding dim={self.embeddings.shape[1]}"
         )
 
-    def search(self, query_emb: np.ndarray, min_score: float = 0.0) -> Optional[str]:
-        """Search bank by cosine similarity and return top-1 experience."""
+    def search(self, query_emb: np.ndarray, min_score: float = 0.0) -> Optional[Dict[str, Any]]:
+        """Search bank by cosine similarity and return top-1 experience dict."""
         if len(self.experiences) == 0:
             return None
 

@@ -39,8 +39,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-HINDSIGHT_PROMPT = """\
-You are evaluating a complete agent reasoning trace.
+CORRECT_PROMPT = """\
+You are evaluating a complete agent reasoning trace. The task was solved CORRECTLY.
 
 ## Task
 {images_note}Question: {question}{type_line}
@@ -50,8 +50,26 @@ You are evaluating a complete agent reasoning trace.
 
 ## Instructions
 Write exactly 1-2 concise sentences of actionable experience for future agents
-facing similar tasks. Focus on strategy (tool choice, evidence usage, and common
-mistakes). Keep it generalizable and do not include specific answers.
+facing similar tasks. Summarize what strategy worked well (tool choice, evidence
+usage, reasoning). Keep it generalizable and do not include specific answers.
+
+Output JSON:
+{{"experience": "your 1-2 sentence experience"}}"""
+
+INCORRECT_PROMPT = """\
+You are evaluating a complete agent reasoning trace. The task was solved INCORRECTLY.
+
+## Task
+{images_note}Question: {question}{type_line}
+{tools_section}
+## Trajectory
+{traj_text}
+
+## Instructions
+Write exactly 1-2 concise sentences of actionable experience for future agents
+facing similar tasks. Identify what went wrong and what should be done differently
+(tool choice, evidence usage, common mistakes). Keep it generalizable and do not
+include specific answers.
 
 Output JSON:
 {{"experience": "your 1-2 sentence experience"}}"""
@@ -78,7 +96,8 @@ def _build_hindsight_prompt(trace_data: Dict[str, Any], trajectory: List[Dict[st
     tools_section = _build_tools_section(AGENT_TOOLS)
     traj_text = _build_trajectory_text(trajectory)
 
-    prompt = HINDSIGHT_PROMPT.format(
+    template = CORRECT_PROMPT if trace_data.get("is_correct", False) else INCORRECT_PROMPT
+    prompt = template.format(
         images_note=images_note,
         question=question,
         type_line=type_line,
@@ -180,7 +199,7 @@ async def build_trace_bank(
     experiences = await asyncio.gather(*[_worker(t) for t in trace_records])
 
     payloads: List[Dict[str, Any]] = []
-    final_experiences: List[str] = []
+    final_experiences: List[Dict[str, Any]] = []
     for trace_data, exp in zip(trace_records, experiences):
         if not exp:
             continue
@@ -193,7 +212,11 @@ async def build_trace_bank(
                 "images": _extract_image_paths(trace_data),
             }
         )
-        final_experiences.append(exp)
+        final_experiences.append({
+            "task_id": trace_data.get("task_id", ""),
+            "experience": exp,
+            "source": "correct" if trace_data.get("is_correct", False) else "incorrect",
+        })
 
     if not payloads:
         raise ValueError("No valid hindsight experiences produced.")

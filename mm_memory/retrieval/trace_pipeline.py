@@ -34,8 +34,17 @@ class TracePipeline:
 
         query_emb = await self.embedder.encode_multimodal(query_text, images)
 
-        experience = self.trace_bank.search(
+        result = self.trace_bank.search(
             query_emb,
             min_score=self.config.min_score,
         )
-        return experience or ""
+        if not result:
+            return ""
+
+        exp_text = result.get("experience", "")
+        if not exp_text:
+            return ""
+
+        source = result.get("source", "correct")
+        tag = "[Learned from success]" if source == "correct" else "[Learned from failure]"
+        return f"{tag}\n{exp_text}"
