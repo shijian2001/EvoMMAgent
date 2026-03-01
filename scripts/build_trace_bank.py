@@ -127,15 +127,20 @@ async def build_trace_bank(
     memory_dir: str,
     api_pool: APIPool,
     embedder: Embedder,
-    filter_correct: bool = True,
+    mode: str = "correct",
     batch_size: int = 32,
     hindsight_concurrency: int = 8,
     bank_dir_name: str = "trace_bank",
 ) -> None:
+    want_correct = mode in ("correct", "both")
+    want_incorrect = mode in ("incorrect", "both")
+
     tasks_dir = os.path.join(memory_dir, "tasks")
     if not os.path.exists(tasks_dir):
         raise FileNotFoundError(f"Tasks directory not found: {tasks_dir}")
 
+    n_correct = 0
+    n_incorrect = 0
     trace_records: List[Dict[str, Any]] = []
     for task_id in sorted(os.listdir(tasks_dir)):
         trace_path = os.path.join(tasks_dir, task_id, "trace.json")
@@ -148,11 +153,20 @@ async def build_trace_bank(
             logger.warning(f"Skipping {task_id}: {e}")
             continue
 
-        if filter_correct and not trace_data.get("is_correct", False):
-            continue
+        is_correct = bool(trace_data.get("is_correct", False))
+        if is_correct and want_correct:
+            n_correct += 1
+            trace_data["task_id"] = task_id
+            trace_records.append(trace_data)
+        elif not is_correct and want_incorrect:
+            n_incorrect += 1
+            trace_data["task_id"] = task_id
+            trace_records.append(trace_data)
 
-        trace_data["task_id"] = task_id
-        trace_records.append(trace_data)
+    logger.info(
+        f"Found {n_correct} correct + {n_incorrect} incorrect = {len(trace_records)} traces "
+        f"(mode={mode})"
+    )
 
     if not trace_records:
         raise ValueError("No traces found after filtering.")
@@ -212,7 +226,11 @@ async def main() -> None:
     parser.add_argument("--embedding_api_key", type=str, default="dummy")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--hindsight_concurrency", type=int, default=8)
-    parser.add_argument("--no_filter_correct", action="store_true")
+    parser.add_argument(
+        "--mode", type=str, default="correct",
+        choices=["correct", "incorrect", "both"],
+        help="Which traces to include (default: correct)",
+    )
     parser.add_argument("--bank_dir_name", type=str, default="trace_bank")
     args = parser.parse_args()
 
@@ -232,7 +250,7 @@ async def main() -> None:
         memory_dir=args.memory_dir,
         api_pool=api_pool,
         embedder=embedder,
-        filter_correct=not args.no_filter_correct,
+        mode=args.mode,
         batch_size=args.batch_size,
         hindsight_concurrency=args.hindsight_concurrency,
         bank_dir_name=args.bank_dir_name,
