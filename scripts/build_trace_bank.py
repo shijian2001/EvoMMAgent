@@ -129,7 +129,7 @@ async def build_trace_bank(
     embedder: Embedder,
     mode: str = "correct",
     batch_size: int = 32,
-    hindsight_concurrency: int = 8,
+    concurrency: int = 8,
     bank_dir_name: str = "trace_bank",
 ) -> None:
     want_correct = mode in ("correct", "both")
@@ -171,7 +171,7 @@ async def build_trace_bank(
     if not trace_records:
         raise ValueError("No traces found after filtering.")
 
-    sem = asyncio.Semaphore(hindsight_concurrency)
+    sem = asyncio.Semaphore(concurrency)
 
     async def _worker(trace_data: Dict[str, Any]) -> str:
         async with sem:
@@ -225,7 +225,7 @@ async def main() -> None:
     parser.add_argument("--embedding_base_url", type=str, required=True)
     parser.add_argument("--embedding_api_key", type=str, default="dummy")
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--hindsight_concurrency", type=int, default=8)
+    parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument(
         "--mode", type=str, default="correct",
         choices=["correct", "incorrect", "both"],
@@ -238,7 +238,7 @@ async def main() -> None:
         model_name=args.llm_model,
         api_keys=[args.llm_api_key or "dummy"],
         base_url=args.llm_base_url,
-        max_concurrent_per_key=max(1, args.hindsight_concurrency),
+        max_concurrent_per_key=max(1, args.concurrency),
     )
     embedder = Embedder(
         model_name=args.embedding_model,
@@ -252,7 +252,7 @@ async def main() -> None:
         embedder=embedder,
         mode=args.mode,
         batch_size=args.batch_size,
-        hindsight_concurrency=args.hindsight_concurrency,
+        concurrency=args.concurrency,
         bank_dir_name=args.bank_dir_name,
     )
 
