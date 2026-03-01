@@ -28,36 +28,36 @@ async def main():
     # ============================================================
     # Example 2: MMAgent with Tools (ReAct pattern)
     # ============================================================
-    agent_config = {
-        "tool_bank": [
-            "ocr",
-            "solve_math_equation",
-            "web_search",
-            "localize_objects", 
-            "zoom_in", 
-            "calculator", 
-            "crop",
-            "visualize_regions",
-            "estimate_region_depth", 
-            "estimate_object_depth", 
-            "get_image2images_similarity", 
-            "get_image2texts_similarity", 
-            "get_text2images_similarity"
-        ],
-        "model_name": "qwen3-vl-32b-instruct",
-        "max_tokens": 40000,
-        "temperature": 0.7,
-        "enable_memory": False,
-        "max_iterations": 20,
-        "memory_dir": f"/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp/ood/{dataset}/qwen3vl_32b/w_tool",
-        "max_retries": 20,
-        "mm_agent_template_en_file": "exp_prompt/base/en.jinja2",
-        "mm_agent_template_zh_file": "exp_prompt/base/zh.jinja2",
-        "base_url": "https://maas.devops.xiaohongshu.com/v1",
-        "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
-        # "base_url": "http://10.217.65.160:8000/v1",
-        # "api_keys": ["dummy key"],
-    }
+    # agent_config = {
+    #     "tool_bank": [
+    #         "ocr",
+    #         "solve_math_equation",
+    #         "web_search",
+    #         "localize_objects", 
+    #         "zoom_in", 
+    #         "calculator", 
+    #         "crop",
+    #         "visualize_regions",
+    #         "estimate_region_depth", 
+    #         "estimate_object_depth", 
+    #         "get_image2images_similarity", 
+    #         "get_image2texts_similarity", 
+    #         "get_text2images_similarity"
+    #     ],
+    #     "model_name": "qwen3-vl-32b-instruct",
+    #     "max_tokens": 40000,
+    #     "temperature": 0.7,
+    #     "enable_memory": False,
+    #     "max_iterations": 20,
+    #     "memory_dir": f"/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp/ood/{dataset}/qwen3vl_32b/w_tool",
+    #     "max_retries": 20,
+    #     "mm_agent_template_en_file": "exp_prompt/base/en.jinja2",
+    #     "mm_agent_template_zh_file": "exp_prompt/base/zh.jinja2",
+    #     "base_url": "https://maas.devops.xiaohongshu.com/v1",
+    #     "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
+    #     # "base_url": "http://10.217.65.160:8000/v1",
+    #     # "api_keys": ["dummy key"],
+    # }
     
     # ============================================================
     # Example 3: MMAgent with Tools + Trace-Level Retrieval
@@ -96,45 +96,54 @@ async def main():
     # ============================================================
     # Example 4: MMAgent with Tools + State-Level Retrieval (MDP)
     # ============================================================
-    # agent_config = {
-    #     "tool_bank": [
-    #         "localize_objects", "zoom_in", "calculator", "crop",
-    #         "visualize_regions", "estimate_region_depth",
-    #         "estimate_object_depth", "get_image2images_similarity",
-    #         "get_image2texts_similarity", "get_text2images_similarity",
-    #     ],
-    #     "model_name": "qwen3-vl-32b-instruct",
-    #     "max_tokens": 40000,
-    #     "temperature": 0.7,
-    #     "enable_memory": False,
-    #     "memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp_20250228/meta_test/vstar/qwen3vl_32b/w_state",
-    #     "max_iterations": 20,
-    #     "max_retries": 20,
-    #     "mm_agent_template_en_file": "exp_prompt/base/en.jinja2",
-    #     "mm_agent_template_zh_file": "exp_prompt/base/zh.jinja2",
-    #     "base_url": "https://maas.devops.xiaohongshu.com/v1",
-    #     "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
-    #     # State-level retrieval: per-step experience from hindsight-annotated states
-    #     "retrieval": {
-    #         "enable": True,
-    #         "mode": "state",
-    #         "bank_memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp_20250228/meta_train/vstar/qwen3vl_32b/w_tool",
-    #         "bank_dir_name": "state_bank",              # subfolder under bank_memory_dir (default: state_bank)
-    #         "embedding_model": "qwen3vl-embed",
-    #         "embedding_base_url": "http://localhost:8001/v1",
-    #         "min_score": 0.1,
-    #         "max_epoch": 3,
-    #         "min_q_value": 5,
-    #         "experience_top_n": 3,
-    #     },
-    # }
+    agent_config = {
+        "tool_bank": [
+            "ocr",
+            "solve_math_equation",
+            "web_search",
+            "localize_objects", 
+            "zoom_in", 
+            "calculator", 
+            "crop",
+            "visualize_regions",
+            "estimate_region_depth", 
+            "estimate_object_depth", 
+            "get_image2images_similarity", 
+            "get_image2texts_similarity", 
+            "get_text2images_similarity"
+        ],
+        "model_name": "qwen3-vl-32b-instruct",
+        "max_tokens": 40000,
+        "temperature": 0.7,
+        "enable_memory": False,
+        "memory_dir": f"/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp/ood/{dataset}/qwen3vl_32b/w_state_gpt4o",
+        "max_iterations": 20,
+        "max_retries": 20,
+        "mm_agent_template_en_file": "exp_prompt/base/en.jinja2",
+        "mm_agent_template_zh_file": "exp_prompt/base/zh.jinja2",
+        "base_url": "https://maas.devops.xiaohongshu.com/v1",
+        "api_keys": ["MAAS369f45faf38a4db59ae7dc6ed954a399"],
+        # State-level retrieval: per-step experience from hindsight-annotated states
+        "retrieval": {
+            "enable": True,
+            "mode": "state",
+            "bank_memory_dir": "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp/meta_train/merged/qwen3vl_32b/w_tool",
+            "bank_dir_name": "state_bank_gpt4o",
+            "embedding_model": "qwen3vl-embed",
+            "embedding_base_url": "http://localhost:8001/v1",
+            "min_score": 0.1,
+            "max_epoch": 3,
+            "min_q_value": 5,
+            "experience_top_n": 3,
+        },
+    }
     
     # Runner configuration
     runner = Runner(
         jsonl_path=dataset_jsonl,
         image_dir=dataset_image_dir,
         agent_config=agent_config,
-        output_dir=f"eval_results/exp/ood/{dataset}/qwen3vl_32b/w_tool",
+        output_dir=f"eval_results/exp/ood/{dataset}/qwen3vl_32b/w_state_gpt4o",
         batch_size=100,
         max_concurrent=10,
         verbose=True
