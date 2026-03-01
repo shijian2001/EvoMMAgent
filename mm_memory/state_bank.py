@@ -15,7 +15,7 @@ ALL_VIEWS = [
     "task+images", "task+observations", "images+observations",
     "question+task+images", "question+task+observations",
     "question+images+observations", "task+images+observations",
-    "all",
+    "question+task+images+observations",
 ]
 
 VIEW_DESCRIPTIONS: Dict[str, str] = {
@@ -33,7 +33,7 @@ VIEW_DESCRIPTIONS: Dict[str, str] = {
     "question+task+observations": "match by question, task, and observations",
     "question+images+observations": "match by question, images, and observations",
     "task+images+observations": "match by task, images, and observations",
-    "all": "match by all elements (question, task, images, observations)",
+    "question+task+images+observations": "match by all elements (question, task, images, observations)",
 }
 
 _ELEMENT_NAMES = {"question", "task", "images", "observations"}
@@ -42,8 +42,6 @@ _OVER_FETCH_FACTOR = 5
 
 def _view_parts(view: str) -> Set[str]:
     """Return the set of element names that a view includes."""
-    if view == "all":
-        return _ELEMENT_NAMES.copy()
     return set(view.split("+"))
 
 
@@ -225,8 +223,9 @@ class StateBank:
         min_score: float = 0.0,
         min_q: int = 0,
     ) -> List[Dict[str, Any]]:
-        """Backward-compatible single-view search using ``all`` if available."""
-        default_view = "all" if "all" in self.view_embeddings else (next(iter(self.view_embeddings), ""))
+        """Backward-compatible single-view search using the full view if available."""
+        full_view = "question+task+images+observations"
+        default_view = full_view if full_view in self.view_embeddings else (next(iter(self.view_embeddings), ""))
         if not default_view:
             return []
         return self.search_view(
@@ -286,6 +285,6 @@ class StateBank:
         trajectory: List[Dict[str, Any]],
         step_index: int,
     ) -> str:
-        """Text serializer using the full ``all`` view."""
+        """Text serializer using the full view."""
         elements = StateBank.state_to_elements(trace_data, trajectory, step_index)
-        return compose_view(elements, "all").get("text", "")
+        return compose_view(elements, "question+task+images+observations").get("text", "")

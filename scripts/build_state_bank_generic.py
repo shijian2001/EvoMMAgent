@@ -218,7 +218,7 @@ async def build_state_bank(
             step = entry["state_index"]
             elements = StateBank.state_to_elements(trace_data, trajectory, step)
             avail = set(available_views(elements))
-            full_text = compose_view(elements, "all").get("text", "")
+            full_text = compose_view(elements, "question+task+images+observations").get("text", "")
 
             meta_idx = len(state_metas)
             state_metas.append({

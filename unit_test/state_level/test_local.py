@@ -385,7 +385,7 @@ def test_search_experiences_tool_behavior():
     assert "Experiences from similar reasoning states" in obs3
     assert len(log3["experiences"]) == 2
 
-    obs4, log4 = asyncio.run(tool.call_async({"view": "all"}))
+    obs4, log4 = asyncio.run(tool.call_async({"view": "question+task+images+observations"}))
     assert "Retrieval limit reached" in obs4
     assert len(log4["experiences"]) == 0
     ok("search_experiences enforces round limit and not-yet-used guidance")

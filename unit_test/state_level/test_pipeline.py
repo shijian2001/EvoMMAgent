@@ -165,7 +165,7 @@ async def build_test_state_bank(memory_dir: str, embedder: Embedder):
             step = entry["state_index"]
             elements = StateBank.state_to_elements(trace_data, trajectory, step)
             avail = set(available_views(elements))
-            full_text = compose_view(elements, "all").get("text", "")
+            full_text = compose_view(elements, "question+task+images+observations").get("text", "")
             state_metas.append({
                 "task_id": task_id,
                 "state": step,

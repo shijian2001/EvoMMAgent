@@ -94,7 +94,7 @@ class _FakeStateBank:
 
     def __init__(self):
         self.state_meta = [{"task_id": "T001", "state": 0}]
-        self.view_embeddings = {"all": np.ones((1, 8))}
+        self.view_embeddings = {"question+task+images+observations": np.ones((1, 8))}
 
     def search_view(self, view, query_emb, top_k=1, min_score=0.0, min_q=0):
         return [

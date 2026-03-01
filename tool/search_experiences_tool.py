@@ -13,21 +13,24 @@ class SearchExperiencesTool(BasicTool):
 
     name = "search_experiences"
     description_en = (
-        "Search for experiences from similar reasoning states before taking the next action. "
-        "You can call this tool multiple times in the same state (up to max_epoch), and you "
-        "must choose a not-yet-used view each time (pick from the latest observation footer). Views: "
-        + ", ".join(ALL_VIEWS)
+        "Search for experiences from similar reasoning states with multi-view retrieval. "
+        "Each view matches by a different combination of state elements at varying granularities: "
+        + ", ".join(f"{v} ({VIEW_DESCRIPTIONS[v]})" for v in ALL_VIEWS)
+        + ". Call with different views to gather diverse perspectives, "
+        "unless you are confident enough to make the best decision."
     )
     description_zh = (
-        "在执行下一步动作前，检索相似推理状态的经验。"
-        "同一状态下可多轮调用（最多 max_epoch 轮），每轮必须选择未使用过的视角。"
+        "通过多视角检索相似推理状态的经验。"
+        "每个视角以不同粒度的状态元素组合进行匹配："
+        + "、".join(f"{v}（{VIEW_DESCRIPTIONS[v]}）" for v in ALL_VIEWS)
+        + "。使用不同视角调用以获取多元参考，除非你已有足够信心做出最佳决策。"
     )
     parameters = {
         "type": "object",
         "properties": {
             "view": {
                 "type": "string",
-                "description": "Retrieval view name, e.g. question+images or all",
+                "description": "The retrieval view to use: " + ", ".join(ALL_VIEWS),
                 "enum": ALL_VIEWS,
             }
         },
@@ -162,14 +165,11 @@ class SearchExperiencesTool(BasicTool):
         if is_final:
             footer = "Retrieval complete. Proceed with your action or answer."
         else:
-            remaining_items = []
-            for v in remaining:
-                desc = VIEW_DESCRIPTIONS.get(v, "")
-                remaining_items.append(f"- {v}: {desc}" if desc else f"- {v}")
-            remaining_block = "\n".join(remaining_items) if remaining_items else "(none)"
+            remaining_block = "\n".join(f"- {v}" for v in remaining) if remaining else "(none)"
             footer = (
                 "Consider searching with a different view for additional insights "
-                "before acting. Not-yet-used views:\n"
+                "before acting, unless you are confident enough to make the best decision. "
+                "Not-yet-used views:\n"
                 f"{remaining_block}"
             )
 

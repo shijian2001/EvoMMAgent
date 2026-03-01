@@ -474,7 +474,7 @@ async def build_state_bank(
             avail = set(available_views(elements))
 
             # Keep a full text snapshot for debugging/readability.
-            full_text = compose_view(elements, "all").get("text", "")
+            full_text = compose_view(elements, "question+task+images+observations").get("text", "")
 
             meta_idx = len(state_metas)
             state_metas.append({
