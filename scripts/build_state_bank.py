@@ -371,7 +371,7 @@ async def annotate_single(
 
             logger.warning(
                 f"Unexpected parse result type for {task_id}: {type(parsed)} "
-                f"(attempt {attempt + 1}/3)"
+                f"(attempt {attempt + 1}/3), raw answer:\n{answer[:800]}"
             )
 
         except Exception as e:

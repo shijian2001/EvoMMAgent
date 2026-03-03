@@ -116,7 +116,7 @@ async def annotate_single(
 
                 logger.warning(
                     f"Unexpected parse result for {task_id}: {type(parsed)} "
-                    f"(attempt {attempt + 1}/{max_attempts})"
+                    f"(attempt {attempt + 1}/{max_attempts}), raw answer:\n{answer[:800]}"
                 )
             except ContentFilterError:
                 logger.warning(f"Skipping {task_id}: content filter triggered")
