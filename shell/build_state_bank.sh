@@ -14,6 +14,9 @@ case $LLM_MODEL in
     "qwen3-vl-235b-a22b-instruct")
         BANK_DIR_NAME="state_bank_qwen3vl235b"
         ;;
+    "qwen3.5-397b-a17b")
+        BANK_DIR_NAME="state_bank_qwen3.5"
+        ;;
     "qwen3-vl-32b-instruct")
         BANK_DIR_NAME="state_bank_qwen3vl32b"
         ;;
@@ -33,10 +36,8 @@ echo "=========================================="
 
 # memory_dir列表 - 在这里添加/修改路径
 MEMORY_DIRS=(
-    "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp/meta_train/mathverse_mc/qwen3vl_32b/w_tool"
-    "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp/meta_train/mmmu_mc/qwen3vl_32b/w_tool"
-    "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp/meta_train/mmstar/qwen3vl_32b/w_tool"
-    "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp/meta_train/wemath/qwen3vl_32b/w_tool"
+    "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp/meta_train/hr_bench/qwen3vl_32b/w_tool"
+    "/mnt/tidalfs-bdsz01/dataset/llm_dataset/shijian/evommagent/memory/exp/meta_train/vstar/qwen3vl_32b/w_tool"
 )
 
 TOTAL=${#MEMORY_DIRS[@]}
